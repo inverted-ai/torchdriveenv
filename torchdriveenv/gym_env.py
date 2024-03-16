@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-@dataclass
 class BaselineAlgorithm(Enum):
     """
     Method used to calculate collisions between agents.
