@@ -450,7 +450,7 @@ class WaypointSuiteEnv(GymEnv):
 
         d = math.dist((x, y), (self.last_x, self.last_y)) if (self.last_x is not None) and (self.last_y is not None) else 0
         distance_reward = 1 if d > 0.5 else 0
-        psi_reward = (1 - math.cos(psi - self.last_psi)) * (-0.05) if (self.last_psi is not None) else 0
+        psi_reward = (1 - math.cos(psi - self.last_psi)) * (-20.0) if (self.last_psi is not None) else 0
         if self.check_reach_target():
             reach_target_reward = 10
             self.reached_waypoint_num += 1
