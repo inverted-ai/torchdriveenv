@@ -258,7 +258,7 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
             recurrent_states = torch.Tensor([0] * 132).unsqueeze(0)
 
 
-        if cfg.use_background_traffic:
+        if cfg.use_background_traffic and not cfg.ego_only:
             background_traffic_dir = os.path.join(
                 os.path.dirname(os.path.realpath(
                     __file__)), f"resources/background_traffic")
