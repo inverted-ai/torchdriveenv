@@ -2,9 +2,6 @@
 An example showing how to define an OpenAI gym environment based on TorchDriveSim.
 It uses the IAI API to provide behaviors for other vehicles and requires an access key to run.
 """
-import sys
-sys.path.insert(0, "torchdrivesim")
-
 import os
 import logging
 import math
@@ -193,7 +190,8 @@ class GymEnv(gym.Env):
     def close(self):
         if isinstance(self.simulator, BirdviewRecordingWrapper):
             bvs = self.simulator.get_birdviews()
-            save_video(bvs, self.config.video_filename)
+            if len(bvs) > 1:
+                save_video(bvs, self.config.video_filename)
 
 
 def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequences=None, waypointseq=None):

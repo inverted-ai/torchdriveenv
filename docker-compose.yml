@@ -1,0 +1,41 @@
+version: '3.8'
+services:
+  rl-training:
+    image: torchdriveenv-first-release:latest
+    working_dir: /opt/torchdriveenv/examples
+    command: bash -c "python rl_training.py"
+    tty: true
+    volumes:
+      - type: bind
+        source: examples
+        target: /opt/torchdriveenv/examples
+    environment:
+      - IAI_API_KEY=${IAI_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: [gpu]
+
+  notebook:
+    image: torchdriveenv-first-release:latest
+    working_dir: /opt/torchdriveenv/examples
+    command: bash -c "jupyter notebook --ip=0.0.0.0 --port=8890 --allow-root --no-browser"
+    tty: true
+    ports:
+      - "8890:8890"
+    volumes:
+      - type: bind
+        source: examples
+        target: /opt/torchdriveenv/examples
+    environment:
+      - IAI_API_KEY=${IAI_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: [gpu]
