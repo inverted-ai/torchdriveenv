@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchdriveenv"
+authors = [
+    {name = "Inverted AI Ltd.", email = "info@inverted.ai"},
+]
+description = "TorchDriveEnv is a lightweight 2D driving reinforcement learning environment, supported by a solid simulator and smart non-playable characters"
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = ["reinforcement learning", "drive", "RL environment", "torch-drive-env", "torchdriveenv", "invertedai", "inverted ai"]
+license = {file = "LICENSE.md"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "pandas",
+    "numpy",
+    "shapely",
+    "scipy",
+    "imageio",
+    "torch>=1.10.1",
+    "invertedai==0.0.14",
+    "omegaconf",
+    "opencv-python",
+    "gymnasium",
+    "lanelet2"
+]
+dynamic = ["version",]
+
+[project.optional-dependencies]
+baselines = ["stable-baselines3",
+             "tensorboard",
+             "wandb",
+             "moviepy"]
+
+[tool.setuptools.packages.find]
+include = ["torchdriveenv*"]
