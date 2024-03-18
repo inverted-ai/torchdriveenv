@@ -1,5 +1,4 @@
 #!/bin/bash
-#SBATCH --account=rrg-kevinlb
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gres=gpu:1

@@ -25,12 +25,8 @@ RUN apt update && apt install -y build-essential cmake autoconf ninja-build \
   clang-8 lld-8 g++-7 \
   libpng-dev libtiff5-dev libjpeg-dev libtool libxml2-dev libxerces-c-dev libgl1
 
-# Install Lanelet2
-RUN apt update \
-  && apt install -y libboost-all-dev libeigen3-dev libgeographic-dev libpugixml-dev libboost-python-dev
-COPY dependencies/lanelet2/lanelet2-0.1.0-cp38-cp38-linux_x86_64.whl /opt/lanelet2-0.1.0-cp38-cp38-linux_x86_64.whl
-RUN pip install /opt/lanelet2-0.1.0-cp38-cp38-linux_x86_64.whl
-
+RUN pip install -U pip
+RUN pip install lanelet2
 RUN pip install opencv-python
 RUN pip install gymnasium[classic-control] stable-baselines3
 RUN pip install wandb tensorboard moviepy
@@ -38,5 +34,4 @@ RUN pip install jupyter notebook
 RUN pip install omegaconf scipy shapely
 RUN pip install invertedai==0.0.14
 RUN pip install "torchdrivesim @ git+https://github.com/inverted-ai/torchdrivesim.git@first-release-env"
-COPY .ssh /root/.ssh
-RUN pip install "torchdriveenv[baselines] @ git+ssh://git@github.com/inverted-ai/torchdriveenv.git@first-release-env"
+RUN pip install "torchdriveenv[baselines] @ git+https://github.com/inverted-ai/torchdriveenv.git@first-release-env"

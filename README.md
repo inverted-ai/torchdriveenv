@@ -1,5 +1,7 @@
 # Installation
 
+The basic installation of torchdriveenv uses an OpenCV renderer, which is slower but easy to install. PyTorch3D renderer can be faster, but it requires specific versions of CUDA and PyTorch, so it is best installed in Docker.
+
 ## Opencv rendering
 
 To install the “torchdriveenv” with opencv rendering:
@@ -7,7 +9,7 @@ To install the “torchdriveenv” with opencv rendering:
 python3 -m venv $PHTHON_VIRTUAL_ENV_PATH
 source .venv/bin/activate
 pip install "torchdrivesim @ git+https://github.com/inverted-ai/torchdrivesim.git@first-release-env"
-pip install "torchdriveenv[baselines] @ git+ssh://git@github.com/inverted-ai/torchdriveenv.git@first-release-env"
+pip install "torchdriveenv[baselines] @ git+https://github.com/inverted-ai/torchdriveenv.git@first-release-env"
 ```
 
 To run examples:
