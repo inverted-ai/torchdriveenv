@@ -1,0 +1,4 @@
+algorithm: sac
+parallel_env_num: 2
+env:
+  ego_only: false
