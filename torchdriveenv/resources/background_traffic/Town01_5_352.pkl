@@ -1,0 +1,1 @@
+{"location": "carla:Town01", "agent_density": 5, "random_seed": 352, "agent_states": [

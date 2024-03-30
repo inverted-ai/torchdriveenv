@@ -36,7 +36,7 @@ RUN pip install gymnasium[classic-control] stable-baselines3
 RUN pip install wandb tensorboard moviepy
 RUN pip install jupyter notebook
 RUN pip install omegaconf scipy shapely
-RUN pip install invertedai==0.0.14
+RUN pip install invertedai==0.0.15
 RUN pip install "torchdrivesim @ git+https://github.com/inverted-ai/torchdrivesim.git@first-release-env"
 COPY .ssh /root/.ssh
 RUN pip install "torchdriveenv[baselines] @ git+ssh://git@github.com/inverted-ai/torchdriveenv.git@first-release-env"
