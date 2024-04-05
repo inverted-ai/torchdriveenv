@@ -34,6 +34,7 @@ dynamic = ["version",]
 baselines = ["stable-baselines3",
              "tensorboard",
              "wandb",
+             "ipykernel",
              "moviepy"]
 
 [tool.setuptools.packages.find]
