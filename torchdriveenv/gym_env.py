@@ -6,7 +6,7 @@ import os
 import logging
 import math
 import inspect
-import pickle
+import json
 import random
 import numpy as np
 from dataclasses import dataclass
@@ -264,8 +264,16 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
                     __file__)), f"resources/background_traffic")
             while True:
                 background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(lambda x: x.split("_")[0]==location, os.listdir(background_traffic_dir)))))
-                with open(background_traffic_file, "rb") as f:
-                    background_traffic = pickle.load(f)
+                with open(background_traffic_file, "r") as f:
+                    background_traffic_json = json.load(f)
+                background_traffic = {}
+                background_traffic['location'] = background_traffic_json['location']
+                background_traffic['agent_density'] = background_traffic_json['agent_density']
+                background_traffic['random_seed'] = background_traffic_json['random_seed']
+                background_traffic['agent_states'] = [AgentState.model_validate(agent_state) for agent_state in background_traffic_json['agent_states']]
+                background_traffic['agent_attributes'] = [AgentAttributes.model_validate(agent_attribute) for agent_attribute in background_traffic_json['agent_attributes']]
+                background_traffic['recurrent_states'] = [RecurrentState.model_validate(recurrent_state) for recurrent_state in background_traffic_json['recurrent_states']]
+
                 if len(background_traffic["agent_states"]) + background_traffic["agent_density"] < 100:
                     break
 
@@ -278,7 +286,7 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
                 for agent_attribute in scenario.agent_attributes:
                     remain_agent_attributes.append(AgentAttributes(length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
                 for recurrent_state in scenario.recurrent_states:
-                    remain_recurrent_states.append(RecurrentState(packed=recurrent_state))
+                    remain_recurrent_states.append(background_traffic["recurrent_states"][0])
 
             for i in range(len(background_traffic["agent_states"])):
                 agent_state = background_traffic["agent_states"][i]
