@@ -16,22 +16,22 @@ from typing import Optional, List, Dict
 import gymnasium as gym
 import torch
 from torch import Tensor
-from invertedai.common import TrafficLightState, AgentState, Point, AgentAttributes, RecurrentState
+from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
 import torchdrivesim
-from torchdrivesim.behavior.iai import iai_location_info_from_local, get_static_actors, IAIWrapper, \
-    iai_conditional_initialize
+from torchdrivesim.behavior.iai import IAIWrapper, iai_conditional_initialize
 from torchdrivesim.goals import WaypointGoal
 from torchdrivesim.kinematic import KinematicBicycle
-from torchdrivesim.mesh import BirdviewMesh
 from torchdrivesim.rendering import renderer_from_config
 from torchdrivesim.rendering.base import RendererConfig
-from torchdrivesim.utils import Resolution, save_video
-from torchdrivesim.utils import set_seeds
+from torchdrivesim.utils import Resolution
 from torchdrivesim.lanelet2 import find_lanelet_directions, load_lanelet_map
-from torchdrivesim.traffic_controls import TrafficLightControl, StopSignControl, YieldControl
+from torchdrivesim.map import find_map_config, traffic_controls_from_map_config
+from torchdrivesim.traffic_lights import current_light_state_tensor_from_controller
 from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
     BirdviewRecordingWrapper, Simulator, HomogeneousWrapper, CollisionMetric
+
+from torchdriveenv.helpers import save_video, set_seeds
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -49,7 +49,6 @@ class BaselineAlgorithm(Enum):
 @dataclass
 class EnvConfig:
     ego_only: bool = False
-    use_mock_lights: bool = True
     max_environment_steps: int = 200
     use_background_traffic: bool = True
     terminated_at_infraction: bool = True
@@ -61,7 +60,7 @@ class EnvConfig:
     render_mode: Optional[str] = "rgb_array"
     video_filename: Optional[str] = "rendered_video.mp4"
     video_res: Optional[int] = 1024
-    video_fov: Optional[float] = 200
+    video_fov: Optional[float] = 500
 
 
 @dataclass
@@ -197,57 +196,19 @@ class GymEnv(gym.Env):
 def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequences=None, waypointseq=None):
     with torch.no_grad():
         device = torch.device("cuda")
-        driving_surface_mesh_path = os.path.join(
-            os.path.dirname(os.path.realpath(
-                __file__)), f"{torchdrivesim.__path__[0]}/resources/maps/carla/meshes/{location}_driving_surface_mesh.pkl"
-        )
-        driving_surface_mesh = BirdviewMesh.unpickle(
-            driving_surface_mesh_path).to(device)
-        simulator_cfg = cfg.simulator
-        iai_location = f'carla:{":".join(location.split("_"))}'
+        map_cfg = find_map_config(f"carla_{location}")
+        traffic_light_controller = map_cfg.traffic_light_controller
+        initial_light_state_name = traffic_light_controller.current_state_with_name
+        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
+        driving_surface_mesh = map_cfg.road_mesh.to(device)
+        simulator_cfg = TorchDriveConfig(left_handed_coordinates=map_cfg.left_handed_coordinates,
+                                     renderer=RendererConfig(left_handed_coordinates=map_cfg.left_handed_coordinates))
 
-        if cfg.use_mock_lights:
-            static_actors = get_static_actors(iai_location_info_from_local(iai_location))
-            traffic_light_ids = []
-            traffic_light_poses = []
-            stop_sign_ids = []
-            stop_sign_poses = []
-            yield_sign_ids = []
-            yield_sign_poses = []
-            for id in static_actors:
-                if static_actors[id]['agent_type'] == "traffic-light":
-                    traffic_light_ids.append(id)
-                    traffic_light_poses.append(static_actors[id]['pos'])
-                if static_actors[id]['agent_type'] == "stop-sign":
-                    stop_sign_ids.append(id)
-                    stop_sign_poses.append(static_actors[id]['pos'])
-                if static_actors[id]['agent_type'] == "yield":
-                    yield_sign_ids.append(id)
-                    yield_sign_poses.append(static_actors[id]['pos'])
 
-            if len(traffic_light_ids) > 0:
-                traffic_light_control = TrafficLightControl(location=location, pos=torch.stack(traffic_light_poses).unsqueeze(0), use_mock_lights=True, ids=traffic_light_ids)
-                traffic_light_states = dict(zip(static_actors.keys(), traffic_light_control.compute_state(0).squeeze()))
-                traffic_light_state_history = [{k:TrafficLightState(traffic_light_control.allowed_states[int(traffic_light_states[k])]) for k in traffic_light_states}]
-            else:
-                traffic_light_control = None
-                traffic_light_state_history = None
+        traffic_controls = traffic_controls_from_map_config(map_cfg)
+        traffic_controls = {key: traffic_controls[key].to(device) for key in traffic_controls}
+        traffic_controls['traffic_light'].set_state(current_light_state_tensor_from_controller(traffic_light_controller, traffic_light_ids).unsqueeze(0).to(device))
 
-            if len(stop_sign_ids) > 0:
-                stop_sign_control = StopSignControl(pos=torch.stack(stop_sign_poses).unsqueeze(0), ids=stop_sign_ids)
-            else:
-                stop_sign_control = None
-
-            if len(yield_sign_ids) > 0:
-                yield_control = YieldControl(pos=torch.stack(yield_sign_poses).unsqueeze(0), ids=yield_sign_ids)
-            else:
-                yield_control = None
-
-        else:
-            traffic_light_control = None
-            traffic_light_state_history = None
-            stop_sign_control = None
-            yield_control = None
 
         if cfg.ego_only:
             agent_states = torch.Tensor([ego_state[0], ego_state[1], ego_state[2], ego_state[3]]).unsqueeze(0)
@@ -294,9 +255,9 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
                     remain_agent_states.append(agent_state)
                     remain_agent_attributes.append(background_traffic["agent_attributes"][i])
                     remain_recurrent_states.append(background_traffic["recurrent_states"][i])
-            agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=iai_location,
+            agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=location,
                    agent_count=max(95 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
-                   center=tuple(ego_state[:2]), traffic_light_state_history=traffic_light_state_history)
+                   center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
 
         agent_attributes, agent_states = agent_attributes.unsqueeze(
@@ -309,13 +270,6 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
         renderer = renderer_from_config(
             simulator_cfg.renderer, static_mesh=driving_surface_mesh)
 
-        traffic_controls = {}
-        if traffic_light_control is not None:
-            traffic_controls["traffic_light"] = traffic_light_control
-        if stop_sign_control is not None:
-            traffic_controls["stop_sign"] = stop_sign_control
-        if yield_control is not None:
-            traffic_controls["yield_sign"] = yield_control
 
         # BxAxNxMx2
         agent_num = agent_states.shape[1]
@@ -343,7 +297,9 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
                 simulator=simulator, npc_mask=npc_mask, recurrent_states=[
                     recurrent_states],
                 rear_axis_offset=agent_attributes[..., 2:3], locations=[
-                    iai_location],
+                    f'carla:{":".join(location.split("_"))}'],
+                traffic_light_controller=traffic_light_controller,
+                traffic_light_ids=traffic_light_ids,
                 car_sequences=car_sequences
             )
         if cfg.render_mode == "video":
