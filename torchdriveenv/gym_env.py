@@ -217,47 +217,46 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
             rear_axis_offset = np.random.random() * (0.97 - 0.82) + 0.82
             agent_attributes = torch.Tensor([length, width, rear_axis_offset]).unsqueeze(0)
             recurrent_states = torch.Tensor([0] * 132).unsqueeze(0)
+        else:
+            if cfg.use_background_traffic:
+                background_traffic_dir = os.path.join(
+                    os.path.dirname(os.path.realpath(
+                        __file__)), f"resources/background_traffic")
+                while True:
+                    background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(lambda x: x.split("_")[0]==location, os.listdir(background_traffic_dir)))))
+                    with open(background_traffic_file, "r") as f:
+                        background_traffic_json = json.load(f)
+                    background_traffic = {}
+                    background_traffic['location'] = background_traffic_json['location']
+                    background_traffic['agent_density'] = background_traffic_json['agent_density']
+                    background_traffic['random_seed'] = background_traffic_json['random_seed']
+                    background_traffic['agent_states'] = [AgentState.model_validate(agent_state) for agent_state in background_traffic_json['agent_states']]
+                    background_traffic['agent_attributes'] = [AgentAttributes.model_validate(agent_attribute) for agent_attribute in background_traffic_json['agent_attributes']]
+                    background_traffic['recurrent_states'] = [RecurrentState.model_validate(recurrent_state) for recurrent_state in background_traffic_json['recurrent_states']]
 
+                    if len(background_traffic["agent_states"]) + background_traffic["agent_density"] < 100:
+                        break
 
-        if cfg.use_background_traffic:
-            background_traffic_dir = os.path.join(
-                os.path.dirname(os.path.realpath(
-                    __file__)), f"resources/background_traffic")
-            while True:
-                background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(lambda x: x.split("_")[0]==location, os.listdir(background_traffic_dir)))))
-                with open(background_traffic_file, "r") as f:
-                    background_traffic_json = json.load(f)
-                background_traffic = {}
-                background_traffic['location'] = background_traffic_json['location']
-                background_traffic['agent_density'] = background_traffic_json['agent_density']
-                background_traffic['random_seed'] = background_traffic_json['random_seed']
-                background_traffic['agent_states'] = [AgentState.model_validate(agent_state) for agent_state in background_traffic_json['agent_states']]
-                background_traffic['agent_attributes'] = [AgentAttributes.model_validate(agent_attribute) for agent_attribute in background_traffic_json['agent_attributes']]
-                background_traffic['recurrent_states'] = [RecurrentState.model_validate(recurrent_state) for recurrent_state in background_traffic_json['recurrent_states']]
+                remain_agent_states = [AgentState(center=Point(x=ego_state[0], y=ego_state[1]), orientation=ego_state[2], speed=ego_state[3])]
+                remain_agent_attributes = [background_traffic["agent_attributes"][0]]
+                remain_recurrent_states = [background_traffic["recurrent_states"][0]]
+                if scenario is not None:
+                    for agent_state in scenario.agent_states:
+                        remain_agent_states.append(AgentState(center=Point(x=agent_state[0], y=agent_state[1]), orientation=agent_state[2], speed=agent_state[3]))
+                    for agent_attribute in scenario.agent_attributes:
+                        remain_agent_attributes.append(AgentAttributes(length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
+                    for recurrent_state in scenario.recurrent_states:
+                        remain_recurrent_states.append(background_traffic["recurrent_states"][0])
 
-                if len(background_traffic["agent_states"]) + background_traffic["agent_density"] < 100:
-                    break
-
-            remain_agent_states = [AgentState(center=Point(x=ego_state[0], y=ego_state[1]), orientation=ego_state[2], speed=ego_state[3])]
-            remain_agent_attributes = [background_traffic["agent_attributes"][0]]
-            remain_recurrent_states = [background_traffic["recurrent_states"][0]]
-            if scenario is not None:
-                for agent_state in scenario.agent_states:
-                    remain_agent_states.append(AgentState(center=Point(x=agent_state[0], y=agent_state[1]), orientation=agent_state[2], speed=agent_state[3]))
-                for agent_attribute in scenario.agent_attributes:
-                    remain_agent_attributes.append(AgentAttributes(length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
-                for recurrent_state in scenario.recurrent_states:
-                    remain_recurrent_states.append(background_traffic["recurrent_states"][0])
-
-            for i in range(len(background_traffic["agent_states"])):
-                agent_state = background_traffic["agent_states"][i]
-                if math.dist(ego_state[:2], (agent_state.center.x, agent_state.center.y)) > 100:
-                    remain_agent_states.append(agent_state)
-                    remain_agent_attributes.append(background_traffic["agent_attributes"][i])
-                    remain_recurrent_states.append(background_traffic["recurrent_states"][i])
-            agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=location,
-                   agent_count=max(95 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
-                   center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
+                for i in range(len(background_traffic["agent_states"])):
+                    agent_state = background_traffic["agent_states"][i]
+                    if math.dist(ego_state[:2], (agent_state.center.x, agent_state.center.y)) > 100:
+                        remain_agent_states.append(agent_state)
+                        remain_agent_attributes.append(background_traffic["agent_attributes"][i])
+                        remain_recurrent_states.append(background_traffic["recurrent_states"][i])
+                agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=location,
+                       agent_count=max(95 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
+                       center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
 
         agent_attributes, agent_states = agent_attributes.unsqueeze(
