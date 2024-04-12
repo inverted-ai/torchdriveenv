@@ -18,14 +18,13 @@ import torch
 from torch import Tensor
 from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
-import torchdrivesim
 from torchdrivesim.behavior.iai import IAIWrapper
 from torchdrivesim.goals import WaypointGoal
 from torchdrivesim.kinematic import KinematicBicycle
 from torchdrivesim.rendering import renderer_from_config
 from torchdrivesim.rendering.base import RendererConfig
 from torchdrivesim.utils import Resolution
-from torchdrivesim.lanelet2 import find_lanelet_directions, load_lanelet_map
+from torchdrivesim.lanelet2 import find_lanelet_directions
 from torchdrivesim.map import find_map_config, traffic_controls_from_map_config
 from torchdrivesim.traffic_lights import current_light_state_tensor_from_controller
 from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
