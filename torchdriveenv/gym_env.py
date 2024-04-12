@@ -295,6 +295,9 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
             replay_mask = torch.zeros(replay_states.shape[:3], dtype=torch.bool)
             replay_states[:, list(car_sequences.keys()), :, :] = torch.Tensor(list(car_sequences.values())).unsqueeze(0)
             replay_mask[:, list(car_sequences.keys()), :] = True
+        else:
+            replay_states = None
+            replay_mask = None
 
         if not cfg.ego_only:
             simulator = IAIWrapper(
