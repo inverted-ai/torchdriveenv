@@ -1,6 +1,3 @@
-import sys
-sys.path.insert(0, "torchdrivesim")
-
 from omegaconf import OmegaConf
 from typing import Any, Dict
 

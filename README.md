@@ -1,37 +1,40 @@
 # Installation
 
-## Install without Pytorch3d
+The basic installation of torchdriveenv uses an OpenCV renderer, which is slower but easy to install. PyTorch3D renderer can be faster, but it requires specific versions of CUDA and PyTorch, so it is best installed in Docker.
 
+## Opencv rendering
+
+To install the “torchdriveenv” with opencv rendering:
 ```
-python3 -m venv .venv
+python3 -m venv $PHTHON_VIRTUAL_ENV_PATH
 source .venv/bin/activate
-pip install torchdrivesim git+https://github.com/inverted-ai/torchdrivesim.git@cleanup
-pip install "torchdriveenv[baselines] @ git+ssh://git@github.com/inverted-ai/rl-env.git@cleanup"
+pip install "torchdrivesim @ git+https://github.com/inverted-ai/torchdrivesim.git@first-release-env"
+pip install "torchdriveenv[baselines] @ git+https://github.com/inverted-ai/torchdriveenv.git"
 ```
 
-## Setup the repo
+To run examples:
+Set the `$IAI_API_KEY` and `$WANDB_API_KEY`
+```
+git clone git@github.com:inverted-ai/torchdriveenv.git
+cd torchdriveenv
+cd examples
+source $PHTHON_VIRTUAL_ENV_PATH/bin/activate
+python rl_training.py
+```
 
-1. Run `git checkout add_env` and `git pull` to pull the `add_env` branch of this repo.
+## Pytorch3d rendering
 
-2. Run `git submodule update --init` to get the `torchdrivesim`.
+To install the “torchdriveenv” with Pytorch3d rendering:
+```
+git clone git@github.com:inverted-ai/torchdriveenv.git
+cd torchdriveenv
+docker build --target torchdriveenv-first-release -t torchdriveenv-first-release:latest .
+```
 
-## Python virtual env
-
-1. Ensure cuda version is 11.6
-
-2. Create virtual env
-
-3. `pip install -r requirements.txt`
-
-## Docker
-
-1. `cd torchdrivesim`, run `docker build --target rl-env-base -t rl-env-base:latest .` to build the container.
-
-2. `cd ..`, `cp api_key_template .env`, set the variables in the `.env` to your own keys.
-
-3. `docker compose up notebook` to start the jupyter notebook.
-
-4. Open the jupyter notebook in your web browser, under the `/opt/rl-env/` there are three notebooks, `task_env_example.ipynb` to visualize the RL-env itself, `rl_example.ipynb` to train the RL models and `evaluation` to evaluate a trained model and generate a global birdview video.
-
-
-
+To run examples:
+Set the `$IAI_API_KEY` and `$WANDB_API_KEY`
+```
+cd torchdriveenv
+cd examples
+docker compose up rl-training
+```
