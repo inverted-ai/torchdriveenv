@@ -19,7 +19,7 @@ from torch import Tensor
 from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
 import torchdrivesim
-from torchdrivesim.behavior.iai import IAIWrapper, iai_conditional_initialize
+from torchdrivesim.behavior.iai import IAIWrapper
 from torchdrivesim.goals import WaypointGoal
 from torchdrivesim.kinematic import KinematicBicycle
 from torchdrivesim.rendering import renderer_from_config
@@ -32,6 +32,7 @@ from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
     BirdviewRecordingWrapper, Simulator, HomogeneousWrapper, CollisionMetric
 
 from torchdriveenv.helpers import save_video, set_seeds
+from torchdriveenv.iai import iai_conditional_initialize
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -193,16 +194,13 @@ class GymEnv(gym.Env):
                 save_video(bvs, self.config.video_filename)
 
 
-def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequences=None, waypointseq=None):
+def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_sequences=None, waypointseq=None):
     with torch.no_grad():
         device = torch.device("cuda")
-        map_cfg = find_map_config(f"carla_{location}")
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
         traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
         driving_surface_mesh = map_cfg.road_mesh.to(device)
-        simulator_cfg = TorchDriveConfig(left_handed_coordinates=map_cfg.left_handed_coordinates,
-                                     renderer=RendererConfig(left_handed_coordinates=map_cfg.left_handed_coordinates))
 
 
         traffic_controls = traffic_controls_from_map_config(map_cfg)
@@ -223,7 +221,7 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
                     os.path.dirname(os.path.realpath(
                         __file__)), f"resources/background_traffic")
                 while True:
-                    background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(lambda x: x.split("_")[0]==location, os.listdir(background_traffic_dir)))))
+                    background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(lambda x: x.split("_")[1]==map_cfg.name[6:], os.listdir(background_traffic_dir)))))
                     with open(background_traffic_file, "r") as f:
                         background_traffic_json = json.load(f)
                     background_traffic = {}
@@ -254,7 +252,7 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
                         remain_agent_states.append(agent_state)
                         remain_agent_attributes.append(background_traffic["agent_attributes"][i])
                         remain_recurrent_states.append(background_traffic["recurrent_states"][i])
-                agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=location,
+                agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=map_cfg.iai_location_name,
                        agent_count=max(95 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
                        center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
@@ -267,7 +265,7 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
         kinematic_model.set_params(lr=agent_attributes[..., 2])
         kinematic_model.set_state(agent_states)
         renderer = renderer_from_config(
-            simulator_cfg.renderer, static_mesh=driving_surface_mesh)
+            cfg.simulator.renderer, static_mesh=driving_surface_mesh)
 
 
         # BxAxNxMx2
@@ -278,7 +276,7 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
         waypoint_goals = WaypointGoal(waypoints, mask)
 
         simulator = Simulator(
-            cfg=simulator_cfg, road_mesh=driving_surface_mesh,
+            cfg=cfg.simulator, road_mesh=driving_surface_mesh,
             kinematic_model=dict(vehicle=kinematic_model), agent_size=dict(vehicle=agent_attributes[..., :2]),
             initial_present_mask=dict(vehicle=torch.ones_like(
                 agent_states[..., 0], dtype=torch.bool)),
@@ -291,15 +289,23 @@ def build_simulator(cfg: EnvConfig, location, ego_state, scenario=None, car_sequ
             agent_states.shape[-2], dtype=torch.bool, device=agent_states.device)
         npc_mask[0] = False
 
+        if car_sequences is not None and len(car_sequences) > 0:
+            T = max([len(car_seq) for car_seq in car_sequences.values()])
+            replay_states = torch.zeros((1, agent_num, T, 4))
+            replay_mask = torch.zeros(replay_states.shape[:3], dtype=torch.bool)
+            replay_states[:, list(car_sequences.keys()), :, :] = torch.Tensor(list(car_sequences.values())).unsqueeze(0)
+            replay_mask[:, list(car_sequences.keys()), :] = True
+
         if not cfg.ego_only:
             simulator = IAIWrapper(
                 simulator=simulator, npc_mask=npc_mask, recurrent_states=[
                     recurrent_states],
                 rear_axis_offset=agent_attributes[..., 2:3], locations=[
-                    f'carla:{":".join(location.split("_"))}'],
+                    map_cfg.iai_location_name],
                 traffic_light_controller=traffic_light_controller,
                 traffic_light_ids=traffic_light_ids,
-                car_sequences=car_sequences
+                replay_states=replay_states,
+                replay_mask=replay_mask
             )
         if cfg.render_mode == "video":
             simulator = BirdviewRecordingWrapper(
@@ -312,25 +318,19 @@ class WaypointSuiteEnv(GymEnv):
     def __init__(self, cfg: EnvConfig, data: WaypointSuite):
         self.config = cfg
         set_seeds(self.config.seed, logger)
-        self.locations = data.locations
-        self.iai_locations = [f'carla:{":".join(location.split("_"))}' for location in self.locations]
+        self.map_cfgs = [find_map_config(f"carla_{location}") for location in data.locations]
 
         self.waypoint_suite = data.waypoint_suite
         self.car_sequence_suite = data.car_sequence_suite
         self.scenarios = data.scenarios
-        self.lanelet_maps = {}
-        for location in self.locations:
-            if location not in self.lanelet_maps:
-                lanelet_map_path = f"{torchdrivesim.__path__[0]}/resources/maps/carla/maps/{location}.osm"
-                self.lanelet_maps[location] = load_lanelet_map(lanelet_map_path)
         super().__init__(cfg=cfg, simulator=None)
 
         logger.info(inspect.getsource(WaypointSuiteEnv.get_reward))
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
-        location = self.locations[self.current_waypoint_suite_idx]
-        self.lanelet_map = self.lanelet_maps[location]
+        map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
+        self.lanelet_map = map_cfg.lanelet_map
 
         self.set_start_pos()
         self.current_target_idx = 1
@@ -350,7 +350,7 @@ class WaypointSuiteEnv(GymEnv):
         self.environment_steps = 0
 
         self.simulator = build_simulator(self.config,
-                                         location=location,
+                                         map_cfg=map_cfg,
                                          ego_state=ego_state,
                                          scenario=self.scenarios[self.current_waypoint_suite_idx],
                                          car_sequences=self.car_sequence_suite[self.current_waypoint_suite_idx],
