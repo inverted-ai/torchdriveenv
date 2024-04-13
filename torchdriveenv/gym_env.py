@@ -11,7 +11,7 @@ import random
 import numpy as np
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 import gymnasium as gym
 import torch
@@ -61,6 +61,8 @@ class EnvConfig:
     video_filename: Optional[str] = "rendered_video.mp4"
     video_res: Optional[int] = 1024
     video_fov: Optional[float] = 500
+    record_episode_data: bool = False
+    record_replay_data: bool = False
 
 
 @dataclass
@@ -83,6 +85,21 @@ class WaypointSuite:
     waypoint_suite: List[List[List[float]]] = None
     car_sequence_suite: List[Optional[Dict[int, List[List[float]]]]] = None
     scenarios: List[Optional[Scenario]] = None
+
+
+@dataclass
+class StepData:
+    obs_birdview: List
+    ego_action: Tuple
+    reward: float
+    info: Dict
+    waypoint: Tuple
+
+
+@dataclass
+class EpisodeData:
+    location: str
+    step_data: List[StepData]
 
 
 class GymEnv(gym.Env):
