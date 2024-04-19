@@ -2,6 +2,20 @@ import math
 import random
 import torch
 
+from typing import Tuple, List
+
+
+def iai_blame(location, colliding_agents, agent_state_history, agent_attributes, traffic_light_state_history=None):
+    print("iai_blame")
+    print(colliding_agents)
+    import invertedai
+    from invertedai.common import AgentState, AgentAttributes, Point
+    agent_attributes = [AgentAttributes(length=at[0], width=at[1], rear_axis_offset=at[2]) for at in agent_attributes.squeeze()]
+    agent_state_history = [[AgentState(center=Point(x=st[0], y=st[1]), orientation=st[2], speed=st[3]) for st in agent_states.squeeze()] for agent_states in agent_state_history]
+
+    response = invertedai.api.blame(location=location, colliding_agents=colliding_agents, agent_state_history=agent_state_history, agent_attributes=agent_attributes)
+    return response.agents_at_fault
+
 
 def iai_conditional_initialize(location, agent_count, agent_attributes=None, agent_states=None, recurrent_states=None, center=(0, 0), traffic_light_state_history=None):
     import invertedai

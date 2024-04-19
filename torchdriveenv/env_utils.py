@@ -1,3 +1,6 @@
+import os
+import pickle
+import torch
 from omegaconf import OmegaConf
 from typing import Any, Dict
 
@@ -28,10 +31,39 @@ def load_waypoint_suite_data(yaml_path):
     return waypoint_suite_data
 
 
+def load_replay_data(dir_path):
+    locations = []
+    waypoint_suite = []
+    car_sequence_suite = []
+    scenarios = []
+    for file in os.listdir(dir_path):
+        file_path = os.path.join(dir_path, file)
+        with open(file_path, "rb") as f:
+            replay_data = pickle.load(f)
+            agent_states = torch.stack(replay_data.agent_states).squeeze()
+#            car_seq = [agent_states[:, agent_idx, :]
+#                       for agent_idx in range(agent_states.shape[1])]
+            car_seq = {agent_idx: agent_states[:, agent_idx, :].tolist() for agent_idx in range(agent_states.shape[1])}
+            scenario = Scenario(agent_states=agent_states[0, ...],
+                                agent_attributes=replay_data.agent_attributes.squeeze(),
+                                recurrent_states=torch.zeros((1, 1)))
+            locations.append(replay_data.location.split('_')[1])
+            waypoint_suite.append(replay_data.waypoint_seq)
+            car_sequence_suite.append(car_seq)
+            scenarios.append(scenario)
+
+    waypoint_suite_data = WaypointSuite(locations=locations,
+                                        waypoint_suite=waypoint_suite,
+                                        car_sequence_suite=car_sequence_suite,
+                                        scenarios=scenarios)
+    return waypoint_suite_data
+
+
 def load_rl_training_config(yaml_path):
     config_from_yaml = OmegaConf.to_object(OmegaConf.load(yaml_path))
     rl_training_config = RlTrainingConfig(**config_from_yaml)
-    rl_training_config.algorithm = BaselineAlgorithm(rl_training_config.algorithm)
+    rl_training_config.algorithm = BaselineAlgorithm(
+        rl_training_config.algorithm)
     rl_training_config.env = construct_env_config(rl_training_config.env)
     return rl_training_config
 
@@ -43,9 +75,10 @@ class EvalNTimestepsCallback(BaseCallback):
     :param n_steps: Number of timesteps between two trigger.
     :param eval_n_episodes: How many episodes to evaluate each time
     """
+
     def __init__(self, eval_env, n_steps: int, eval_n_episodes: int, deterministic=False, log_tab="eval"):
         super().__init__()
-        self.log_tab=log_tab
+        self.log_tab = log_tab
         self.n_steps = n_steps
         self.eval_n_episodes = eval_n_episodes
         self.deterministic = deterministic
@@ -63,9 +96,10 @@ class EvalNTimestepsCallback(BaseCallback):
         if "psi_smoothness" not in info:
             return
         self.psi_smoothness_for_single_episode.append(info["psi_smoothness"])
-        self.speed_smoothness_for_single_episode.append(info["speed_smoothness"])
+        self.speed_smoothness_for_single_episode.append(
+            info["speed_smoothness"])
         if (info["offroad"] > 0) or (info["collision"] > 0) or (info["traffic_light_violation"] > 0) \
-                                 or (info["is_success"]):
+                or (info["is_success"]):
             self.episode_num += 1
 
             if info["offroad"] > 0:
@@ -78,10 +112,11 @@ class EvalNTimestepsCallback(BaseCallback):
                 self.success_num += 1
             self.reached_waypoint_nums.append(info["reached_waypoint_num"])
             if len(self.psi_smoothness_for_single_episode) > 0:
-                self.psi_smoothness.append(sum(self.psi_smoothness_for_single_episode) / len(self.psi_smoothness_for_single_episode))
+                self.psi_smoothness.append(sum(
+                    self.psi_smoothness_for_single_episode) / len(self.psi_smoothness_for_single_episode))
             if len(self.speed_smoothness_for_single_episode) > 0:
-                self.speed_smoothness.append(sum(self.speed_smoothness_for_single_episode) / len(self.speed_smoothness_for_single_episode))
-
+                self.speed_smoothness.append(sum(
+                    self.speed_smoothness_for_single_episode) / len(self.speed_smoothness_for_single_episode))
 
     def _evaluate(self) -> bool:
         self.episode_num = 0
@@ -112,21 +147,28 @@ class EvalNTimestepsCallback(BaseCallback):
         mean_episode_reward /= self.eval_n_episodes
         mean_episode_length /= self.eval_n_episodes
 
-        self.logger.record(f"{self.log_tab}/mean_episode_reward", mean_episode_reward)
-        self.logger.record(f"{self.log_tab}/mean_episode_length", mean_episode_length)
+        self.logger.record(
+            f"{self.log_tab}/mean_episode_reward", mean_episode_reward)
+        self.logger.record(
+            f"{self.log_tab}/mean_episode_length", mean_episode_length)
 
-        self.logger.record(f"{self.log_tab}/offroad_rate", self.offroad_num / self.eval_n_episodes)
-        self.logger.record(f"{self.log_tab}/collision_rate", self.collision_num / self.eval_n_episodes)
-        self.logger.record(f"{self.log_tab}/traffic_light_violation_rate", self.traffic_light_violation_num / self.eval_n_episodes)
-        self.logger.record(f"{self.log_tab}/success_percentage", self.success_num / self.eval_n_episodes)
-        self.logger.record(f"{self.log_tab}/reached_waypoint_num", sum(self.reached_waypoint_nums) / self.eval_n_episodes)
-        self.logger.record(f"{self.log_tab}/psi_smoothness", sum(self.psi_smoothness) / self.eval_n_episodes)
-        self.logger.record(f"{self.log_tab}/speed_smoothness", sum(self.speed_smoothness) / self.eval_n_episodes)
-
+        self.logger.record(f"{self.log_tab}/offroad_rate",
+                           self.offroad_num / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/collision_rate",
+                           self.collision_num / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/traffic_light_violation_rate",
+                           self.traffic_light_violation_num / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/success_percentage",
+                           self.success_num / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/reached_waypoint_num",
+                           sum(self.reached_waypoint_nums) / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/psi_smoothness",
+                           sum(self.psi_smoothness) / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/speed_smoothness",
+                           sum(self.speed_smoothness) / self.eval_n_episodes)
 
     def _on_training_start(self) -> None:
         self._evaluate()
-
 
     def _on_step(self) -> bool:
         if (self.num_timesteps - self.last_time_trigger) >= self.n_steps:

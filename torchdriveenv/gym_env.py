@@ -7,9 +7,11 @@ import logging
 import math
 import inspect
 import json
+import pickle
 import random
 import numpy as np
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Tuple
 
@@ -31,7 +33,8 @@ from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
     BirdviewRecordingWrapper, Simulator, HomogeneousWrapper, CollisionMetric
 
 from torchdriveenv.helpers import save_video, set_seeds
-from torchdriveenv.iai import iai_conditional_initialize
+from torchdriveenv.iai import iai_conditional_initialize, iai_blame
+from torchdriveenv.record_data import OfflineDataRecordingWrapper
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -63,6 +66,7 @@ class EnvConfig:
     video_fov: Optional[float] = 500
     record_episode_data: bool = False
     record_replay_data: bool = False
+    use_blame: bool = False
 
 
 @dataclass
@@ -100,6 +104,16 @@ class StepData:
 class EpisodeData:
     location: str
     step_data: List[StepData]
+
+
+@dataclass
+class ReplayRecord:
+    location: str
+    agent_attributes: List
+    traffic_light_ids: List
+    agent_states: List
+    traffic_light_state_history: List
+    waypoint_seq: List
 
 
 class GymEnv(gym.Env):
@@ -205,7 +219,13 @@ class GymEnv(gym.Env):
 
     def close(self):
         if isinstance(self.simulator, BirdviewRecordingWrapper):
+            print("is_birdview")
             bvs = self.simulator.get_birdviews()
+            if len(bvs) > 1:
+                save_video(bvs, self.config.video_filename)
+        if isinstance(self.simulator.inner_simulator, BirdviewRecordingWrapper):
+            print("is_inner.birdview")
+            bvs = self.simulator.inner_simulator.get_birdviews()
             if len(bvs) > 1:
                 save_video(bvs, self.config.video_filename)
 
@@ -257,10 +277,9 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
                 if scenario is not None:
                     for agent_state in scenario.agent_states:
                         remain_agent_states.append(AgentState(center=Point(x=agent_state[0], y=agent_state[1]), orientation=agent_state[2], speed=agent_state[3]))
+                        remain_recurrent_states.append(background_traffic["recurrent_states"][0])
                     for agent_attribute in scenario.agent_attributes:
                         remain_agent_attributes.append(AgentAttributes(length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
-                    for recurrent_state in scenario.recurrent_states:
-                        remain_recurrent_states.append(background_traffic["recurrent_states"][0])
 
                 for i in range(len(background_traffic["agent_states"])):
                     agent_state = background_traffic["agent_states"][i]
@@ -329,6 +348,8 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
         if cfg.render_mode == "video":
             simulator = BirdviewRecordingWrapper(
                 simulator, res=Resolution(cfg.video_res, cfg.video_res), fov=cfg.video_fov, to_cpu=True)
+        if cfg.record_replay_data or cfg.use_blame:
+            simulator = OfflineDataRecordingWrapper(simulator)
 
         return simulator
 
@@ -343,13 +364,52 @@ class WaypointSuiteEnv(GymEnv):
         self.car_sequence_suite = data.car_sequence_suite
         self.scenarios = data.scenarios
         super().__init__(cfg=cfg, simulator=None)
+        if self.config.record_episode_data:
+            self.episode_data = None
+            self.episode_data_dir = f"offline_datasets/episode_data_{datetime.now().strftime('%Y%m%d-%H%M')}"
+            if not os.path.exists(self.episode_data_dir):
+                os.mkdir(self.episode_data_dir)
+                link_path = "offline_datasets/latest_episode_data"
+                os.unlink(link_path)
+                os.symlink(self.episode_data_dir, link_path)
+        if self.config.record_replay_data:
+            self.replay_data = None
+            self.replay_data_dir = f"offline_datasets/replay_data_{datetime.now().strftime('%Y%m%d-%H%M')}"
+            if not os.path.exists(self.replay_data_dir):
+                os.mkdir(self.replay_data_dir)
+                link_path = "offline_datasets/latest_replay_data"
+                os.unlink(link_path)
+                os.symlink(self.replay_data_dir, link_path)
+        self.data_index = -1
 
         logger.info(inspect.getsource(WaypointSuiteEnv.get_reward))
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        if self.config.record_episode_data:
+            if self.data_index >= 0:
+                self.episode_data.location = self.location
+                with open(f"{self.episode_data_dir}/episode_{self.data_index}.pkl", "wb") as f:
+                    pickle.dump(self.episode_data, f)
+            self.episode_data = EpisodeData(location="", step_data=[])
+
+        if self.config.record_replay_data:
+            if self.data_index >= 0:
+                records = self.simulator.get_records()
+                iai_simulator = self.simulator.inner_simulator
+                if not isinstance(iai_simulator, IAIWrapper):
+                    iai_simulator = iai_simulator.inner_simulator
+                traffic_light_ids = iai_simulator._traffic_light_ids
+                agent_attributes = iai_simulator._agent_attributes
+                self.replay_data = ReplayRecord(location=self.location, agent_attributes=agent_attributes, traffic_light_ids=traffic_light_ids, agent_states=records["agent_states"], traffic_light_state_history=records["traffic_light_state_history"], waypoint_seq=self.waypoint_suite[self.current_waypoint_suite_idx])
+                with open(f"{self.replay_data_dir}/replay_{self.data_index}.pkl", "wb") as f:
+                    pickle.dump(self.replay_data, f)
+
+        self.data_index += 1
+
         self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
-        map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
-        self.lanelet_map = map_cfg.lanelet_map
+        self.map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
+        self.location = self.map_cfgs[self.current_waypoint_suite_idx].name
+        self.lanelet_map = self.map_cfg.lanelet_map
 
         self.set_start_pos()
         self.current_target_idx = 1
@@ -369,7 +429,7 @@ class WaypointSuiteEnv(GymEnv):
         self.environment_steps = 0
 
         self.simulator = build_simulator(self.config,
-                                         map_cfg=map_cfg,
+                                         map_cfg=self.map_cfg,
                                          ego_state=ego_state,
                                          scenario=self.scenarios[self.current_waypoint_suite_idx],
                                          car_sequences=self.car_sequence_suite[self.current_waypoint_suite_idx],
@@ -397,6 +457,27 @@ class WaypointSuiteEnv(GymEnv):
 
     def step(self, action: Tensor):
 #        try:
+#@dataclass
+#class StepData:
+#    obs_birdview: List
+#    ego_action: Tuple
+#    reward: float
+#    info: Dict
+#    waypoint: Tuple
+#
+#
+#@dataclass
+#class EpisodeData:
+#    location: str
+#    step_data: List[StepData]
+        if self.config.record_episode_data:
+            step_data = StepData(obs_birdview=self.last_obs,
+                                 ego_action=action,
+                                 reward=self.last_reward,
+                                 info=self.last_info,
+                                 waypoint=self.current_target)
+            self.episode_data.step_data.append(step_data)
+
         state = self.simulator.get_state()
         self.last_x = state[..., 0]
         self.last_y = state[..., 1]
@@ -413,6 +494,14 @@ class WaypointSuiteEnv(GymEnv):
         self.last_obs = obs
         self.last_reward = reward
         self.last_info = info
+
+        if self.config.record_episode_data and (terminated or truncated):
+            step_data = StepData(obs_birdview=self.last_obs,
+                                 ego_action=None,
+                                 reward=self.last_reward,
+                                 info=self.last_info,
+                                 waypoint=self.current_target)
+            self.episode_data.step_data.append(step_data)
 #        except Exception as e:
 #            obs, reward, terminated, truncated, info = self.mock_step()
         return obs, reward, terminated, truncated, info
@@ -441,9 +530,22 @@ class WaypointSuiteEnv(GymEnv):
 
     def is_terminated(self):
         if self.config.terminated_at_infraction:
-            return (self.simulator.compute_offroad() > 0) or (self.simulator.compute_collision() > 0) or ((self.simulator.compute_traffic_lights_violations()) > 0)
+            return (self.simulator.compute_offroad() > 0) or \
+                   (self.simulator.compute_collision() > 0 and \
+                           (not self.config.use_blame or self.config.use_blame and self.check_blame())) or \
+                   ((self.simulator.compute_traffic_lights_violations()) > 0)
         else:
             return False
+
+    def check_blame(self):
+        iai_simulator = self.simulator.inner_simulator
+        if not isinstance(iai_simulator, IAIWrapper):
+            iai_simulator = iai_simulator.inner_simulator
+        agent_attributes = iai_simulator._agent_attributes
+        agent_state_history = self.simulator.records["agent_states"]
+        distances = [math.dist(agent_state_history[-1][0, 0, :2], agent_state_history[-1][0, i, :2]) for i in range(1, agent_state_history[-1].shape[-2])]
+        return (0 in iai_blame(self.map_cfg.iai_location_name, colliding_agents=(0, np.argmin(distances) + 1), agent_state_history=agent_state_history, agent_attributes=agent_attributes.squeeze(), traffic_light_state_history=self.simulator.records["traffic_light_state_history"]))
+
 
     def get_info(self):
         psi = self.simulator.get_state()[..., 2]
@@ -458,6 +560,10 @@ class WaypointSuiteEnv(GymEnv):
             psi_smoothness=((self.last_psi - psi) / 0.1).norm(p=2).item(),
             speed_smoothness=((self.last_speed - speed) / 0.1).norm(p=2).item()
         )
+        if (self.info["collision"] > 0) and (self.config.use_blame):
+            self.info["blame"] = self.check_blame()
+        else:
+            self.info["blame"] = None
         return self.info
 
 

@@ -2,3 +2,6 @@ algorithm: sac
 parallel_env_num: 2
 env:
   ego_only: false
+  record_episode_data: True
+  record_replay_data: True
+  use_blame: True
