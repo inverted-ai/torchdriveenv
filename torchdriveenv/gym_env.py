@@ -1,7 +1,3 @@
-"""
-An example showing how to define an OpenAI gym environment based on TorchDriveSim.
-It uses the IAI API to provide behaviors for other vehicles and requires an access key to run.
-"""
 import os
 import logging
 import math
@@ -38,9 +34,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 class BaselineAlgorithm(Enum):
-    """
-    Method used to calculate collisions between agents.
-    """
     sac = 'sac'
     ppo = 'ppo'
     a2c = 'a2c'
@@ -61,6 +54,7 @@ class EnvConfig:
     video_filename: Optional[str] = "rendered_video.mp4"
     video_res: Optional[int] = 1024
     video_fov: Optional[float] = 500
+    device: Optional[str] = "cuda"
 
 
 @dataclass
@@ -193,9 +187,8 @@ class GymEnv(gym.Env):
                 save_video(bvs, self.config.video_filename)
 
 
-def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_sequences=None, waypointseq=None):
+def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, car_sequences=None, waypointseq=None):
     with torch.no_grad():
-        device = torch.device("cuda")
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
         traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
@@ -319,7 +312,8 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
 class WaypointSuiteEnv(GymEnv):
     def __init__(self, cfg: EnvConfig, data: WaypointSuite):
         self.config = cfg
-        set_seeds(self.config.seed, logger)
+        self.device = torch.device('cuda' if torch.cuda.is_available() and cfg.device == 'cuda' else 'cpu')
+        set_seeds(self.config.seed, logger, self.device)
         self.map_cfgs = [find_map_config(f"carla_{location}") for location in data.locations]
 
         self.waypoint_suite = data.waypoint_suite
@@ -356,7 +350,8 @@ class WaypointSuiteEnv(GymEnv):
                                          ego_state=ego_state,
                                          scenario=self.scenarios[self.current_waypoint_suite_idx],
                                          car_sequences=self.car_sequence_suite[self.current_waypoint_suite_idx],
-                                         waypointseq=self.waypoint_suite[self.current_waypoint_suite_idx])
+                                         waypointseq=self.waypoint_suite[self.current_waypoint_suite_idx],
+                                         device=self.device)
 
         return self.get_obs(), {}
 
