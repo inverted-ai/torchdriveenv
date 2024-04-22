@@ -26,7 +26,8 @@ dependencies = [
     "omegaconf",
     "opencv-python",
     "gymnasium",
-    "lanelet2"
+    "lanelet2",
+    "torchdrivesim"
 ]
 dynamic = ["version",]
 

@@ -33,5 +33,5 @@ RUN pip install wandb tensorboard moviepy
 RUN pip install jupyter notebook
 RUN pip install omegaconf scipy shapely
 RUN pip install invertedai==0.0.15
-RUN pip install "torchdrivesim @ git+https://github.com/inverted-ai/torchdrivesim.git@first-release-env"
+RUN pip install torchdrivesim
 RUN pip install "torchdriveenv[baselines] @ git+https://github.com/inverted-ai/torchdriveenv.git"
