@@ -1,9 +1,11 @@
+import os
 from omegaconf import OmegaConf
 from typing import Any, Dict
 
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 
+import torchdriveenv
 from torchdriveenv.gym_env import EnvConfig, RlTrainingConfig, Scenario, WaypointSuite, BaselineAlgorithm
 
 
@@ -34,6 +36,35 @@ def load_rl_training_config(yaml_path):
     rl_training_config.algorithm = BaselineAlgorithm(rl_training_config.algorithm)
     rl_training_config.env = construct_env_config(rl_training_config.env)
     return rl_training_config
+
+
+def _load_default_data(file_name):
+    for root in torchdriveenv._data_path:
+        file_path = os.path.join(root, file_name)
+        if os.path.exists(file_path):
+            break
+    else:
+        return None
+    return load_waypoint_suite_data(file_path)
+
+
+def load_default_validation_data():
+    return _load_default_data(file_name="validation_cases.yml")
+
+
+def load_default_train_data():
+    return _load_default_data(file_name="train_cases.yml")
+
+
+def load_default_env_config():
+    file_name = "rl_training.yml"
+    for root in torchdriveenv._env_config_path:
+        file_path = os.path.join(root, file_name)
+        if os.path.exists(file_path):
+            break
+    else:
+        return None
+    return load_rl_training_config(file_path).env
 
 
 class EvalNTimestepsCallback(BaseCallback):
