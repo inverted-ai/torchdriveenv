@@ -123,7 +123,7 @@ class GymEnv(gym.Env):
         self.last_birdview = None
         return self.get_obs(), {}
 
-    def step(self, action: Tensor):
+    def step(self, action: np.array):
         self.environment_steps += 1
         self.simulator.step(action)
         self.last_action = self.current_action if self.current_action is not None else action
@@ -131,12 +131,12 @@ class GymEnv(gym.Env):
         return self.get_obs(), self.get_reward(), self.is_terminated(), self.is_truncated(), self.get_info()
 
     def get_obs(self):
-        birdview = self.simulator.render_egocentric().cpu().numpy()
+        birdview = self.simulator.render_egocentric().cpu().numpy().astype(np.uint8)
         return birdview
 
     def get_reward(self):
         x = self.simulator.get_state()[..., 0]
-        r = torch.zeros_like(x)
+        r = np.zeros(x.shape)
         return r
 
     def is_done(self):
@@ -373,7 +373,7 @@ class WaypointSuiteEnv(GymEnv):
                                                                    x=self.start_point[0], y=self.start_point[1])[0]) \
                                      + np.random.normal(0, 0.1)
 
-    def step(self, action: Tensor):
+    def step(self, action: np.array):
 #        try:
         state = self.simulator.get_state()
         self.last_x = state[..., 0]
@@ -415,11 +415,11 @@ class WaypointSuiteEnv(GymEnv):
             reach_target_reward = 0
         r = torch.zeros_like(x)
         r += reach_target_reward + distance_reward + psi_reward
-        return r
+        return r.item()
 
     def is_terminated(self):
         if self.config.terminated_at_infraction:
-            return (self.simulator.compute_offroad() > 0) or (self.simulator.compute_collision() > 0) or ((self.simulator.compute_traffic_lights_violations()) > 0)
+            return ((self.simulator.compute_offroad() > 0) or (self.simulator.compute_collision() > 0) or ((self.simulator.compute_traffic_lights_violations()) > 0)).item()
         else:
             return False
 
@@ -452,7 +452,7 @@ class SingleAgentWrapper(gym.Wrapper):
         obs, _ = super().reset(**kwargs)
         return self.transform_out(obs), _
 
-    def step(self, action: Tensor):
+    def step(self, action: np.array):
         action = torch.Tensor(action).unsqueeze(0).unsqueeze(0).to("cuda")
         obs, reward, terminated, truncated, info = super().step(action)
         obs = self.transform_out(obs)
