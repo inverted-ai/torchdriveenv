@@ -36,7 +36,7 @@ def save_video(imgs, filename, batch_index=0, fps=10, web_browser_friendly=False
         os.remove(temp_filename)
 
 
-def set_seeds(seed, logger=None, device=None):
+def set_seeds(seed, logger=None):
     if seed is None:
         seed = np.random.randint(low=0, high=2**32 - 1)
     if logger is not None:
@@ -44,8 +44,6 @@ def set_seeds(seed, logger=None, device=None):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-    if device == "cuda":
+    if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
     return seed

@@ -12,14 +12,14 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from wandb.integration.sb3 import WandbCallback
 
 import torchdriveenv
-from torchdriveenv.gym_env import BaselineAlgorithm
-from torchdriveenv.env_utils import load_waypoint_suite_data, load_rl_training_config
+from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data
 
+from common import BaselineAlgorithm, load_rl_training_config
 
 rl_training_config = load_rl_training_config("env_configs/rl_training.yml")
 env_config = rl_training_config.env
-training_data = load_waypoint_suite_data("data/training_cases.yml")
-validation_data = load_waypoint_suite_data("data/validation_cases.yml")
+training_data = load_default_train_data()
+validation_data = load_default_validation_data()
 
 
 class EvalNTimestepsCallback(BaseCallback):

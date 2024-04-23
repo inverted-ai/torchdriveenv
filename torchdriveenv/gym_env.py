@@ -6,12 +6,10 @@ import json
 import random
 import numpy as np
 from dataclasses import dataclass
-from enum import Enum
 from typing import Optional, List, Dict
 
-import gymnasium as gym
 import torch
-from torch import Tensor
+import gymnasium as gym
 from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
 from torchdrivesim.behavior.iai import IAIWrapper
@@ -33,12 +31,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-class BaselineAlgorithm(Enum):
-    sac = 'sac'
-    ppo = 'ppo'
-    a2c = 'a2c'
-    td3 = 'td3'
-
 @dataclass
 class EnvConfig:
     ego_only: bool = False
@@ -54,14 +46,7 @@ class EnvConfig:
     video_filename: Optional[str] = "rendered_video.mp4"
     video_res: Optional[int] = 1024
     video_fov: Optional[float] = 500
-    device: Optional[str] = "cuda"
-
-
-@dataclass
-class RlTrainingConfig:
-    algorithm: BaselineAlgorithm = None
-    parallel_env_num: Optional[int] = 2
-    env: EnvConfig = EnvConfig()
+    device: Optional[str] = None
 
 
 @dataclass
@@ -191,7 +176,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
     with torch.no_grad():
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
-        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
+        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic_light']
         driving_surface_mesh = map_cfg.road_mesh.to(device)
 
 
@@ -312,8 +297,12 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
 class WaypointSuiteEnv(GymEnv):
     def __init__(self, cfg: EnvConfig, data: WaypointSuite):
         self.config = cfg
-        self.device = torch.device('cuda' if torch.cuda.is_available() and cfg.device == 'cuda' else 'cpu')
-        set_seeds(self.config.seed, logger, self.device)
+        if cfg.device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = cfg.device
+
+        set_seeds(self.config.seed, logger)
         self.map_cfgs = [find_map_config(f"carla_{location}") for location in data.locations]
 
         self.waypoint_suite = data.waypoint_suite
