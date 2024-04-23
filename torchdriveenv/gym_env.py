@@ -443,7 +443,7 @@ class SingleAgentWrapper(gym.Wrapper):
         return self.transform_out(obs), _
 
     def step(self, action: np.array):
-        action = torch.Tensor(action).unsqueeze(0).unsqueeze(0).to("cuda")
+        action = torch.Tensor(action).unsqueeze(0).unsqueeze(0).to(self.device)
         obs, reward, terminated, truncated, info = super().step(action)
         obs = self.transform_out(obs)
         reward = self.transform_out(reward)
