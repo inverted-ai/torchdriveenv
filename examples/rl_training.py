@@ -48,7 +48,7 @@ if __name__=='__main__':
         save_code=True,
     )
 
-    env = SubprocVecEnv([make_env] * rl_training_config.parallel_env_num)
+    env = SubprocVecEnv([make_val_env] * rl_training_config.parallel_env_num)
     env = VecFrameStack(env, n_stack=3, channels_order="first")
     env = VecVideoRecorder(env, "videos",
         record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
@@ -82,13 +82,13 @@ if __name__=='__main__':
     eval_train_callback = EvalNTimestepsCallback(eval_train_env, n_steps=25000, eval_n_episodes=10, deterministic=False, log_tab="eval_train")
     eval_train_env = VecVideoRecorder(eval_train_env, "eval_train_video.1_",
         record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+#                  eval_val_callback,
+#                      eval_train_callback,
 
     model.learn(
             total_timesteps=config["total_timesteps"],
             callback=[
-                      eval_val_callback,
-                      eval_train_callback,
-                      WandbCallback(
+                        WandbCallback(
                         verbose=1,
                         gradient_save_freq=100,
                         model_save_freq=100,

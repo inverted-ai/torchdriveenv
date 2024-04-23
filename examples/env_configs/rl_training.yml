@@ -1,7 +1,7 @@
 algorithm: sac
-parallel_env_num: 2
+parallel_env_num: 30
 env:
-  ego_only: false
+  ego_only: true
   record_episode_data: True
-  record_replay_data: True
-  use_blame: True
+  record_replay_data: False
+  use_blame: False

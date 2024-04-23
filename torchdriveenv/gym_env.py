@@ -49,6 +49,7 @@ class BaselineAlgorithm(Enum):
     a2c = 'a2c'
     td3 = 'td3'
 
+
 @dataclass
 class EnvConfig:
     ego_only: bool = False
@@ -223,6 +224,7 @@ class GymEnv(gym.Env):
             bvs = self.simulator.get_birdviews()
             if len(bvs) > 1:
                 save_video(bvs, self.config.video_filename)
+
         if isinstance(self.simulator.inner_simulator, BirdviewRecordingWrapper):
             print("is_inner.birdview")
             bvs = self.simulator.inner_simulator.get_birdviews()
@@ -369,9 +371,9 @@ class WaypointSuiteEnv(GymEnv):
             self.episode_data_dir = f"offline_datasets/episode_data_{datetime.now().strftime('%Y%m%d-%H%M')}"
             if not os.path.exists(self.episode_data_dir):
                 os.mkdir(self.episode_data_dir)
-                link_path = "offline_datasets/latest_episode_data"
-                os.unlink(link_path)
-                os.symlink(self.episode_data_dir, link_path)
+#                link_path = "offline_datasets/latest_episode_data"
+#                os.unlink(link_path)
+#                os.symlink(self.episode_data_dir, link_path)
         if self.config.record_replay_data:
             self.replay_data = None
             self.replay_data_dir = f"offline_datasets/replay_data_{datetime.now().strftime('%Y%m%d-%H%M')}"
@@ -385,10 +387,22 @@ class WaypointSuiteEnv(GymEnv):
         logger.info(inspect.getsource(WaypointSuiteEnv.get_reward))
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        if isinstance(self.simulator, BirdviewRecordingWrapper):
+            print("is_birdview")
+            bvs = self.simulator.get_birdviews()
+            if len(bvs) > 1:
+                save_video(bvs, self.config.video_filename)
+
+        if self.simulator is not None and isinstance(self.simulator.inner_simulator, BirdviewRecordingWrapper):
+            print("is_inner.birdview")
+            bvs = self.simulator.inner_simulator.get_birdviews()
+            if len(bvs) > 1:
+                save_video(bvs, self.config.video_filename)
+
         if self.config.record_episode_data:
             if self.data_index >= 0:
                 self.episode_data.location = self.location
-                with open(f"{self.episode_data_dir}/episode_{self.data_index}.pkl", "wb") as f:
+                with open(f"{self.episode_data_dir}/episode_{self.data_index}_{random.randint(0, 100000)}.pkl", "wb") as f:
                     pickle.dump(self.episode_data, f)
             self.episode_data = EpisodeData(location="", step_data=[])
 
@@ -406,7 +420,8 @@ class WaypointSuiteEnv(GymEnv):
 
         self.data_index += 1
 
-        self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
+#        self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
+        self.current_waypoint_suite_idx = 3
         self.map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
         self.location = self.map_cfgs[self.current_waypoint_suite_idx].name
         self.lanelet_map = self.map_cfg.lanelet_map
@@ -421,7 +436,6 @@ class WaypointSuiteEnv(GymEnv):
         self.last_y = None
         self.last_psi = None
 
-        self.last_obs = None
         self.last_reward = None
         self.last_info = None
 
@@ -434,8 +448,10 @@ class WaypointSuiteEnv(GymEnv):
                                          scenario=self.scenarios[self.current_waypoint_suite_idx],
                                          car_sequences=self.car_sequence_suite[self.current_waypoint_suite_idx],
                                          waypointseq=self.waypoint_suite[self.current_waypoint_suite_idx])
+        obs = self.get_obs()
+        self.last_obs = obs
 
-        return self.get_obs(), {}
+        return obs, {}
 
     def set_start_pos(self):
         self.waypoints = self.waypoint_suite[self.current_waypoint_suite_idx]
@@ -470,13 +486,6 @@ class WaypointSuiteEnv(GymEnv):
 #class EpisodeData:
 #    location: str
 #    step_data: List[StepData]
-        if self.config.record_episode_data:
-            step_data = StepData(obs_birdview=self.last_obs,
-                                 ego_action=action,
-                                 reward=self.last_reward,
-                                 info=self.last_info,
-                                 waypoint=self.current_target)
-            self.episode_data.step_data.append(step_data)
 
         state = self.simulator.get_state()
         self.last_x = state[..., 0]
@@ -485,6 +494,14 @@ class WaypointSuiteEnv(GymEnv):
         self.last_speed = state[..., 3]
 
         obs, reward, terminated, truncated, info = super().step(action)
+        if self.config.record_episode_data:
+            step_data = StepData(obs_birdview=self.last_obs,
+                                 ego_action=action,
+                                 reward=reward,
+                                 info=info,
+                                 waypoint=self.current_target)
+            self.episode_data.step_data.append(step_data)
+
         if self.check_reach_target():
             self.current_target_idx += 1
             if self.current_target_idx < len(self.waypoints):
@@ -495,13 +512,13 @@ class WaypointSuiteEnv(GymEnv):
         self.last_reward = reward
         self.last_info = info
 
-        if self.config.record_episode_data and (terminated or truncated):
-            step_data = StepData(obs_birdview=self.last_obs,
-                                 ego_action=None,
-                                 reward=self.last_reward,
-                                 info=self.last_info,
-                                 waypoint=self.current_target)
-            self.episode_data.step_data.append(step_data)
+#        if self.config.record_episode_data and (terminated or truncated):
+#            step_data = StepData(obs_birdview=self.last_obs,
+#                                 ego_action=None,
+#                                 reward=self.last_reward,
+#                                 info=self.last_info,
+#                                 waypoint=self.current_target)
+#            self.episode_data.step_data.append(step_data)
 #        except Exception as e:
 #            obs, reward, terminated, truncated, info = self.mock_step()
         return obs, reward, terminated, truncated, info
