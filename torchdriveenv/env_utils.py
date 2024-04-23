@@ -41,4 +41,4 @@ def load_default_validation_data():
 
 
 def load_default_train_data():
-    return _load_default_data(file_name="train_cases.yml")
+    return _load_default_data(file_name="training_cases.yml")

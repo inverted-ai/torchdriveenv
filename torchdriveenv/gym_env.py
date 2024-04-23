@@ -177,12 +177,12 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
         traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic_light']
-        driving_surface_mesh = map_cfg.road_mesh.to(device)
+        driving_surface_mesh = map_cfg.road_mesh
 
 
         traffic_controls = traffic_controls_from_map_config(map_cfg)
-        traffic_controls = {key: traffic_controls[key].to(device) for key in traffic_controls}
-        traffic_controls['traffic_light'].set_state(current_light_state_tensor_from_controller(traffic_light_controller, traffic_light_ids).unsqueeze(0).to(device))
+        traffic_controls = {key: traffic_controls[key] for key in traffic_controls}
+        traffic_controls['traffic_light'].set_state(current_light_state_tensor_from_controller(traffic_light_controller, traffic_light_ids).unsqueeze(0))
 
 
         if cfg.ego_only:
@@ -236,7 +236,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
 
         agent_attributes, agent_states = agent_attributes.unsqueeze(
             0), agent_states.unsqueeze(0)
-        agent_attributes, agent_states = agent_attributes.to(device).to(torch.float32), agent_states.to(device).to(
+        agent_attributes, agent_states = agent_attributes.to(torch.float32), agent_states.to(
             torch.float32)
         kinematic_model = KinematicBicycle()
         kinematic_model.set_params(lr=agent_attributes[..., 2])
@@ -247,9 +247,9 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
 
         # BxAxNxMx2
         agent_num = agent_states.shape[1]
-        waypoints = dict(vehicle=torch.Tensor(waypointseq).unsqueeze(-2).unsqueeze(0).unsqueeze(0).expand(-1, agent_num, -1, -1, -1).to(device))
+        waypoints = dict(vehicle=torch.Tensor(waypointseq).unsqueeze(-2).unsqueeze(0).unsqueeze(0).expand(-1, agent_num, -1, -1, -1))
         # BxAxNxM
-        mask = dict(vehicle=torch.tensor([False] + [True] * (len(waypointseq) - 1)).unsqueeze(-1).unsqueeze(0).unsqueeze(0).expand(-1, agent_num, -1, -1).to(device))
+        mask = dict(vehicle=torch.tensor([False] + [True] * (len(waypointseq) - 1)).unsqueeze(-1).unsqueeze(0).unsqueeze(0).expand(-1, agent_num, -1, -1))
         waypoint_goals = WaypointGoal(waypoints, mask)
 
         simulator = Simulator(
@@ -290,6 +290,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
         if cfg.render_mode == "video":
             simulator = BirdviewRecordingWrapper(
                 simulator, res=Resolution(cfg.video_res, cfg.video_res), fov=cfg.video_fov, to_cpu=True)
+        simulator.to(device)
 
         return simulator
 
