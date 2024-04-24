@@ -38,5 +38,8 @@ baselines = ["stable-baselines3",
              "ipykernel",
              "moviepy"]
 
+[tool.setuptools.dynamic]
+version = {attr = "torchdriveenv.__version__"}
+
 [tool.setuptools.packages.find]
 include = ["torchdriveenv*"]
