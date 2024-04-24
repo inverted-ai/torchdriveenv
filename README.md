@@ -8,7 +8,6 @@ To install the “torchdriveenv” with opencv rendering:
 ```
 python3 -m venv $PHTHON_VIRTUAL_ENV_PATH
 source .venv/bin/activate
-pip install "torchdrivesim @ git+https://github.com/inverted-ai/torchdrivesim.git@first-release-env"
 pip install "torchdriveenv[baselines] @ git+https://github.com/inverted-ai/torchdriveenv.git"
 ```
 

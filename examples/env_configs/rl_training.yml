@@ -1,4 +1,4 @@
 algorithm: sac
-parallel_env_num: 2
+parallel_env_num: 1
 env:
   ego_only: false
