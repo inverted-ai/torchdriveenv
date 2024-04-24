@@ -3,7 +3,7 @@ import gymnasium as gym
 
 from torchdriveenv.gym_env import SingleAgentWrapper, WaypointSuiteEnv
 
-__version__ = "0.1.0"
+__version__ = "0.1.0dev1"
 
 _data_path = [os.path.join(x, 'data') for x in __path__]
 
