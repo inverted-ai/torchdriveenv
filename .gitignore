@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Logging folders
+examples/runs*
+examples/videos*
+examples/wandb*
+examples/models*
+
 # Distribution / packaging
 .Python
 build/

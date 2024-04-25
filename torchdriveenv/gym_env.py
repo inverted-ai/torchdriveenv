@@ -35,6 +35,11 @@ logging.basicConfig(level=logging.INFO)
 class EnvConfig:
     ego_only: bool = False
     max_environment_steps: int = 200
+    frame_stack: int = 3
+    waypoint_bonus: float = 100.
+    heading_penalty: float = 25.
+    distance_bonus: float = 1.
+    distance_cutoff: float = 0.5
     use_background_traffic: bool = True
     terminated_at_infraction: bool = True
     seed: Optional[int] = None
@@ -47,7 +52,6 @@ class EnvConfig:
     video_res: Optional[int] = 1024
     video_fov: Optional[float] = 500
     device: Optional[str] = None
-
 
 @dataclass
 class Scenario:
@@ -311,8 +315,6 @@ class WaypointSuiteEnv(GymEnv):
         self.scenarios = data.scenarios
         super().__init__(cfg=cfg, simulator=None)
 
-        logger.info(inspect.getsource(WaypointSuiteEnv.get_reward))
-
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
         map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
@@ -396,10 +398,10 @@ class WaypointSuiteEnv(GymEnv):
         psi = self.simulator.get_state()[..., 2]
 
         d = math.dist((x, y), (self.last_x, self.last_y)) if (self.last_x is not None) and (self.last_y is not None) else 0
-        distance_reward = 1 if d > 0.5 else 0
-        psi_reward = (1 - math.cos(psi - self.last_psi)) * (-20.0) if (self.last_psi is not None) else 0
+        distance_reward = self.config.distance_bonus if d > self.config.distance_cutoff else 0
+        psi_reward = (1 - math.cos(psi - self.last_psi)) * (- self.config.heading_penalty) if (self.last_psi is not None) else 0
         if self.check_reach_target():
-            reach_target_reward = 10
+            reach_target_reward = self.config.waypoint_bonus
             self.reached_waypoint_num += 1
         else:
             reach_target_reward = 0

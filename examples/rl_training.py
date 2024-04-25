@@ -133,11 +133,11 @@ def make_val_env():
 
 
 if __name__=='__main__':
-    config = {"policy_type": "CnnPolicy", "total_timesteps": 5000000}
+    config = {"policy_type": "CnnPolicy", "total_timesteps": rl_training_config.total_timesteps}
     experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
     wandb.init(
         name=experiment_name,
-        project="stable_baselines3",
+        project=rl_training_config.project,
         config=config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -145,9 +145,11 @@ if __name__=='__main__':
     )
 
     env = SubprocVecEnv([make_env] * rl_training_config.parallel_env_num)
-    env = VecFrameStack(env, n_stack=3, channels_order="first")
-    env = VecVideoRecorder(env, "videos",
-        record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+    env = VecFrameStack(env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
+    
+    if rl_training_config.record_training_examples:
+        env = VecVideoRecorder(env, "videos",
+            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
         model = SAC(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
@@ -164,20 +166,26 @@ if __name__=='__main__':
     if rl_training_config.algorithm == BaselineAlgorithm.td3:
         model = TD3(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam}, train_freq=1, gradient_steps=1)
-
+ 
     eval_val_env = SubprocVecEnv([make_val_env])
-    eval_val_env = VecFrameStack(eval_val_env, n_stack=3, channels_order="first")
-
-    eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=25000, eval_n_episodes=10, deterministic=False, log_tab="eval_val")
-    eval_val_env = VecVideoRecorder(eval_val_env, "eval_val_video.0_",
-        record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+    eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
+    eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=rl_training_config.eval_val_callback['n_steps'], 
+                                                 eval_n_episodes=rl_training_config.eval_val_callback['eval_n_episodes'], 
+                                                 deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
+    
+    if rl_training_config.eval_val_callback['record']:
+        eval_val_env = VecVideoRecorder(eval_val_env, "eval_val_video.0_",
+            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     eval_train_env = SubprocVecEnv([make_env])
-    eval_train_env = VecFrameStack(eval_train_env, n_stack=3, channels_order="first")
-
-    eval_train_callback = EvalNTimestepsCallback(eval_train_env, n_steps=25000, eval_n_episodes=10, deterministic=False, log_tab="eval_train")
-    eval_train_env = VecVideoRecorder(eval_train_env, "eval_train_video.1_",
-        record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+    eval_train_env = VecFrameStack(eval_train_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
+    eval_train_callback = EvalNTimestepsCallback(eval_train_env, n_steps=rl_training_config.eval_train_callback['n_steps'], 
+                                                 eval_n_episodes=rl_training_config.eval_train_callback['eval_n_episodes'], 
+                                                 deterministic=rl_training_config.eval_train_callback['deterministic'], log_tab="eval_train")
+    
+    if rl_training_config.eval_train_callback['record']:
+        eval_train_env = VecVideoRecorder(eval_train_env, "eval_train_video.1_",
+            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     model.learn(
             total_timesteps=config["total_timesteps"],
