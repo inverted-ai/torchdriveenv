@@ -5,7 +5,7 @@ parallel_env_num: 5
 record_training_examples: true  
 
 wandb_callback:
-  verbose: 1
+  verbose: true
   gradient_save_freq: -1
   model_save_freq: 1000
 

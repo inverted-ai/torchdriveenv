@@ -193,9 +193,9 @@ if __name__=='__main__':
                       eval_val_callback,
                       eval_train_callback,
                       WandbCallback(
-                        verbose=1,
-                        gradient_save_freq=100,
-                        model_save_freq=100,
+                        verbose=rl_training_config.wandb_callback['verbose'],
+                        gradient_save_freq=rl_training_config.wandb_callback['gradient_save_freq'],
+                        model_save_freq=rl_training_config.wandb_callback['model_save_freq'],
                         model_save_path=f"models/{experiment_name}",
                     )],
     )

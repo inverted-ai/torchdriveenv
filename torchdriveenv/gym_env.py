@@ -270,17 +270,18 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
             agent_states.shape[-2], dtype=torch.bool, device=agent_states.device)
         npc_mask[0] = False
 
-        if car_sequences is not None and len(car_sequences) > 0:
-            T = max([len(car_seq) for car_seq in car_sequences.values()])
-            replay_states = torch.zeros((1, agent_num, T, 4))
-            replay_mask = torch.zeros(replay_states.shape[:3], dtype=torch.bool)
-            replay_states[:, list(car_sequences.keys()), :, :] = torch.Tensor(list(car_sequences.values())).unsqueeze(0)
-            replay_mask[:, list(car_sequences.keys()), :] = True
-        else:
-            replay_states = None
-            replay_mask = None
-
         if not cfg.ego_only:
+
+            if car_sequences is not None and len(car_sequences) > 0:
+                T = max([len(car_seq) for car_seq in car_sequences.values()])
+                replay_states = torch.zeros((1, agent_num, T, 4))
+                replay_mask = torch.zeros(replay_states.shape[:3], dtype=torch.bool)
+                replay_states[:, list(car_sequences.keys()), :, :] = torch.Tensor(list(car_sequences.values())).unsqueeze(0)
+                replay_mask[:, list(car_sequences.keys()), :] = True
+            else:
+                replay_states = None
+                replay_mask = None
+
             simulator = IAIWrapper(
                 simulator=simulator, npc_mask=npc_mask, recurrent_states=[
                     recurrent_states],
