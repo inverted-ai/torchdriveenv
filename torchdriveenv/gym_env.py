@@ -180,7 +180,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
     with torch.no_grad():
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
-        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
+        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic_light']
         driving_surface_mesh = map_cfg.road_mesh
 
 
