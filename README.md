@@ -12,6 +12,7 @@ pip install torchdriveenv
 To run examples:
 Set the `$IAI_API_KEY` and `$WANDB_API_KEY`
 ```
+pip install torchdriveenv[baselines]
 cd examples
 python rl_training.py
 ```
