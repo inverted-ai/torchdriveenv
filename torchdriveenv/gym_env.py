@@ -176,7 +176,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
     with torch.no_grad():
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
-        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic_light']
+        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
         driving_surface_mesh = map_cfg.road_mesh
 
 
@@ -299,9 +299,9 @@ class WaypointSuiteEnv(GymEnv):
     def __init__(self, cfg: EnvConfig, data: WaypointSuite):
         self.config = cfg
         if cfg.device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.torch_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
-            self.device = cfg.device
+            self.torch_device = torch.device(cfg.device)
 
         set_seeds(self.config.seed, logger)
         self.map_cfgs = [find_map_config(f"carla_{location}") for location in data.locations]
@@ -341,7 +341,7 @@ class WaypointSuiteEnv(GymEnv):
                                          scenario=self.scenarios[self.current_waypoint_suite_idx],
                                          car_sequences=self.car_sequence_suite[self.current_waypoint_suite_idx],
                                          waypointseq=self.waypoint_suite[self.current_waypoint_suite_idx],
-                                         device=self.device)
+                                         device=self.torch_device)
 
         return self.get_obs(), {}
 
@@ -443,7 +443,7 @@ class SingleAgentWrapper(gym.Wrapper):
         return self.transform_out(obs), _
 
     def step(self, action: np.array):
-        action = torch.Tensor(action).unsqueeze(0).unsqueeze(0).to(self.device)
+        action = torch.Tensor(action).unsqueeze(0).unsqueeze(0).to(self.torch_device)
         obs, reward, terminated, truncated, info = super().step(action)
         obs = self.transform_out(obs)
         reward = self.transform_out(reward)
