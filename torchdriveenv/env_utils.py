@@ -5,13 +5,13 @@ import torchdriveenv
 from torchdriveenv.gym_env import EnvConfig, Scenario, WaypointSuite
 
 
-def construct_env_config(raw_config):
+def construct_env_config(raw_config): 
     env_config = EnvConfig(**raw_config)
     return env_config
 
 
 def load_env_config(yaml_path):
-    config_from_yaml = OmegaConf.to_object(OmegaConf.load(yaml_path))
+    config_from_yaml = OmegaConf.to_object(OmegaConf.load(yaml_path)) 
     return construct_env_config(config_from_yaml)
 
 
