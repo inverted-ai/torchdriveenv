@@ -34,4 +34,4 @@ RUN pip install jupyter notebook
 RUN pip install omegaconf scipy shapely
 RUN pip install invertedai
 RUN pip install torchdrivesim
-RUN pip install "torchdriveenv[baselines] @ git+https://github.com/inverted-ai/torchdriveenv.git"
+RUN pip install torchdriveenv[baselines]
