@@ -1,0 +1,30 @@
+algorithm: sac
+project: "paper-tests" 
+total_timesteps: 5e6
+parallel_env_num: 10
+record_training_examples: true  
+
+wandb_callback:
+  verbose: true
+  gradient_save_freq: -1
+  model_save_freq: 1000
+
+env:
+  ego_only: true
+  frame_stack: 3
+  waypoint_bonus: 100.
+  heading_penalty: 25.
+  distance_bonus: 1.
+  distance_cutoff: 0.25
+ 
+eval_val_callback:
+  n_steps: 1000
+  eval_n_episodes: 1
+  deterministic: true 
+  record: true
+  
+eval_train_callback:
+  n_steps: 1000
+  eval_n_episodes: 1
+  deterministic: true 
+  record: true
