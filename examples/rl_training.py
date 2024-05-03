@@ -20,7 +20,6 @@ from common import BaselineAlgorithm, load_rl_training_config
 training_data = load_default_train_data()
 validation_data = load_default_validation_data()
 
-
 class EvalNTimestepsCallback(BaseCallback):
     """
     Trigger a callback every ``n_steps`` timesteps
@@ -134,7 +133,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(
                     prog='tde_examples',
                     description='execute benchmarks for tde')
-    parser.add_argument("--config_file", type=str, default="env_configs/sac_training.yml")  
+    parser.add_argument("--config_file", type=str, default="env_configs/single_agent/sac_training.yml")  
     args = parser.parse_args()
     
     rl_training_config = load_rl_training_config(args.config_file)
@@ -142,8 +141,11 @@ if __name__=='__main__':
 
     make_env = lambda: make_env_(env_config)
     make_val_env = lambda: make_val_env_(env_config)
-
-    config = {"policy_type": "CnnPolicy", "total_timesteps": rl_training_config.total_timesteps}
+    
+    config = {k:v for (k,v) in vars(rl_training_config).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))}
+    config.update( {'env-'+k:v for (k,v) in vars(rl_training_config.env).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
+    config.update( {'tds-'+k:v for (k,v) in vars(rl_training_config.env.simulator).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
+     
     experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
     wandb.init(
         name=experiment_name,
@@ -162,19 +164,19 @@ if __name__=='__main__':
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
-        model = SAC(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+        model = SAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam})
 
     if rl_training_config.algorithm == BaselineAlgorithm.ppo:
-        model = PPO(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam})
+        model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                    policy_kwargs={'optimizer_class':torch.optim.Adam, 'batch_size': 128})
 
     if rl_training_config.algorithm == BaselineAlgorithm.a2c:
-        model = A2C(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+        model = A2C("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam})
 
     if rl_training_config.algorithm == BaselineAlgorithm.td3:
-        model = TD3(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+        model = TD3("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam}, train_freq=1, gradient_steps=1)
  
     eval_val_env = SubprocVecEnv([make_val_env])

@@ -1,6 +1,6 @@
 algorithm: a2c
 project: "paper-tests" 
-total_timesteps: 5e6
+total_timesteps: 1e6
 parallel_env_num: 10
 record_training_examples: true  
 
