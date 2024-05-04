@@ -170,12 +170,12 @@ if __name__=='__main__':
     if rl_training_config.algorithm == BaselineAlgorithm.ppo:
         model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam}, 
-                    batch_size=256)
+                    batch_size=256, n_epochs=5, ent_coef=0.01)
 
     if rl_training_config.algorithm == BaselineAlgorithm.a2c:
         model = A2C("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam}, 
-                    n_steps=int(256/rl_training_config.parallel_env_num), gae_lambda=0.95, ent_coef=0.05)
+                    n_steps=int(256/rl_training_config.parallel_env_num), gae_lambda=0.95, ent_coef=0.01)
 
     if rl_training_config.algorithm == BaselineAlgorithm.td3:
         model = TD3("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
