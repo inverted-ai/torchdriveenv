@@ -407,7 +407,7 @@ class WaypointSuiteEnv(GymEnv):
         else:
             reach_target_reward = 0
         r = torch.zeros_like(x)
-        r += reach_target_reward + torch.clamp(distance_reward + psi_reward, min=-1., max=np.Inf)
+        r += reach_target_reward + distance_reward + psi_reward 
         return r.item()
 
     def is_terminated(self):
