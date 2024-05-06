@@ -417,8 +417,11 @@ class WaypointSuiteEnv(GymEnv):
             return False
 
     def get_info(self):
+        x = self.simulator.get_state()[..., 0]
+        y = self.simulator.get_state()[..., 1]
         psi = self.simulator.get_state()[..., 2]
         speed = self.simulator.get_state()[..., 3]
+        d = math.dist((x, y), (self.last_x, self.last_y)) if (self.last_x is not None) and (self.last_y is not None) else 0
         reached_waypoint_num = self.reached_waypoint_num
         self.info = dict(
             offroad=self.simulator.compute_offroad(),
@@ -427,6 +430,8 @@ class WaypointSuiteEnv(GymEnv):
             is_success=(self.environment_steps >= self.max_environment_steps),
             reached_waypoint_num=reached_waypoint_num,
             psi_smoothness=((self.last_psi - psi) / 0.1).norm(p=2).item(),
+            psi_reward=(1 - math.cos(psi - self.last_psi)) * (- self.config.heading_penalty),
+            dist_reward=self.config.distance_bonus if d > self.config.distance_cutoff else 0,
             speed_smoothness=((self.last_speed - speed) / 0.1).norm(p=2).item()
         )
         return self.info

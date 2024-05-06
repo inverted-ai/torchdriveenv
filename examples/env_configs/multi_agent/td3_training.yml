@@ -1,6 +1,6 @@
-algorithm: sac
-project: "stable_baselines3" 
-total_timesteps: 5e6
+algorithm: td3
+project: "paper-experiments" 
+total_timesteps: 1e6
 parallel_env_num: 10
 record_training_examples: true  
 
@@ -10,7 +10,7 @@ wandb_callback:
   model_save_freq: 1000
 
 env:
-  ego_only: true
+  ego_only: false
   frame_stack: 3
   waypoint_bonus: 100.
   heading_penalty: 25.

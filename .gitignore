@@ -11,6 +11,7 @@ examples/runs*
 examples/videos*
 examples/wandb*
 examples/models*
+examples/eval_*
 
 # Distribution / packaging
 .Python
