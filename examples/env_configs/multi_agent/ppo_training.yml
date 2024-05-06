@@ -1,5 +1,5 @@
 algorithm: ppo
-project: "paper-tests" 
+project: "paper-experiments" 
 total_timesteps: 1e6
 parallel_env_num: 10
 record_training_examples: true  
