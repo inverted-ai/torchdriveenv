@@ -160,7 +160,7 @@ if __name__=='__main__':
     env = VecFrameStack(env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
     
     if rl_training_config.record_training_examples:
-        env = VecVideoRecorder(env, "videos",
+        env = VecVideoRecorder(env, "videos/"+experiment_name+'/online',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
@@ -189,7 +189,7 @@ if __name__=='__main__':
                                                  deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
     
     if rl_training_config.eval_val_callback['record']:
-        eval_val_env = VecVideoRecorder(eval_val_env, "eval_val_video.0_",
+        eval_val_env = VecVideoRecorder(eval_val_env, "videos/"+experiment_name+'/validation',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     eval_train_env = SubprocVecEnv([make_env])
@@ -199,7 +199,7 @@ if __name__=='__main__':
                                                  deterministic=rl_training_config.eval_train_callback['deterministic'], log_tab="eval_train")
     
     if rl_training_config.eval_train_callback['record']:
-        eval_train_env = VecVideoRecorder(eval_train_env, "eval_train_video.1_",
+        eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     model.learn(
