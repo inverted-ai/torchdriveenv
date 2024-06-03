@@ -6,15 +6,29 @@ from typing import Tuple, List
 
 
 def iai_blame(location, colliding_agents, agent_state_history, agent_attributes, traffic_light_state_history=None):
-    print("iai_blame")
-    print(colliding_agents)
+#    print("iai_blame")
+#    print(colliding_agents)
+    print("fake blame")
+    if random.random() < 0.5:
+        return [0]
+    else:
+        return []
+#    ego_agent_speed = agent_state_history[-1][..., 0, 3]
+#    other_agent_speed = agent_state_history[-1][..., colliding_agents[1], 3]
+#    if ego_agent_speed > other_agent_speed:
+#        return [0]
     import invertedai
     from invertedai.common import AgentState, AgentAttributes, Point
     agent_attributes = [AgentAttributes(length=at[0], width=at[1], rear_axis_offset=at[2]) for at in agent_attributes.squeeze()]
-    agent_state_history = [[AgentState(center=Point(x=st[0], y=st[1]), orientation=st[2], speed=st[3]) for st in agent_states.squeeze()] for agent_states in agent_state_history]
+    agent_state_history = [[AgentState(center=Point(x=st[0], y=st[1]), orientation=st[2], speed=st[3]) for st in agent_states.squeeze()] for agent_states in agent_state_history[-50:]]
 
-    response = invertedai.api.blame(location=location, colliding_agents=colliding_agents, agent_state_history=agent_state_history, agent_attributes=agent_attributes)
-    return response.agents_at_fault
+    response = invertedai.api.blame(location=location, colliding_agents=colliding_agents, agent_state_history=agent_state_history, agent_attributes=agent_attributes, get_confidence_score=True)
+    print("agents at fault: ", response.agents_at_fault)
+    print("confidence score: ", response.confidence_score)
+    agents_at_fault = response.agents_at_fault
+    if (response.confidence_score < 0.8) or (len(agents_at_fault) == 0):
+        agents_at_fault = [0]
+    return agents_at_fault
 
 
 def iai_conditional_initialize(location, agent_count, agent_attributes=None, agent_states=None, recurrent_states=None, center=(0, 0), traffic_light_state_history=None):
@@ -41,6 +55,8 @@ def iai_conditional_initialize(location, agent_count, agent_attributes=None, age
             outside_recurrent_states.append(recurrent_states[i])
 
     agent_count -= len(conditional_agent_states)
+#    print("agent_count: ", agent_count)
+    agent_count = 0
     if agent_count > 0:
         try:
             seed = random.randint(1, 10000)

@@ -31,7 +31,7 @@ def load_waypoint_suite_data(yaml_path):
     return waypoint_suite_data
 
 
-def load_replay_data(dir_path):
+def load_replay_data(dir_path, add_car_seq=True):
     locations = []
     waypoint_suite = []
     car_sequence_suite = []
@@ -41,15 +41,18 @@ def load_replay_data(dir_path):
         with open(file_path, "rb") as f:
             replay_data = pickle.load(f)
             agent_states = torch.stack(replay_data.agent_states).squeeze()
-#            car_seq = [agent_states[:, agent_idx, :]
-#                       for agent_idx in range(agent_states.shape[1])]
-            car_seq = {agent_idx: agent_states[:, agent_idx, :].tolist() for agent_idx in range(agent_states.shape[1])}
+            if add_car_seq:
+#                car_seq = [agent_states[:, agent_idx, :]
+#                           for agent_idx in range(agent_states.shape[1])]
+                car_seq = {agent_idx: agent_states[:, agent_idx, :].tolist() for agent_idx in range(agent_states.shape[1])}
+            else:
+                car_seq = {}
+            car_sequence_suite.append(car_seq)
             scenario = Scenario(agent_states=agent_states[0, ...],
                                 agent_attributes=replay_data.agent_attributes.squeeze(),
                                 recurrent_states=torch.zeros((1, 1)))
             locations.append(replay_data.location.split('_')[1])
             waypoint_suite.append(replay_data.waypoint_seq)
-            car_sequence_suite.append(car_seq)
             scenarios.append(scenario)
 
     waypoint_suite_data = WaypointSuite(locations=locations,
@@ -110,6 +113,8 @@ class EvalNTimestepsCallback(BaseCallback):
                 self.traffic_light_violation_num += 1
             if info["is_success"]:
                 self.success_num += 1
+            if ("blame" in info) and (info["blame"]):
+                self.blame_num += 1
             self.reached_waypoint_nums.append(info["reached_waypoint_num"])
             if len(self.psi_smoothness_for_single_episode) > 0:
                 self.psi_smoothness.append(sum(
@@ -122,6 +127,7 @@ class EvalNTimestepsCallback(BaseCallback):
         self.episode_num = 0
         self.offroad_num = 0
         self.collision_num = 0
+        self.blame_num = 0
         self.traffic_light_violation_num = 0
         self.success_num = 0
         self.reached_waypoint_nums = []
@@ -156,6 +162,8 @@ class EvalNTimestepsCallback(BaseCallback):
                            self.offroad_num / self.eval_n_episodes)
         self.logger.record(f"{self.log_tab}/collision_rate",
                            self.collision_num / self.eval_n_episodes)
+        self.logger.record(f"{self.log_tab}/blame_rate",
+                           0 if self.blame_num == 0 else self.blame_num / self.collision_num)
         self.logger.record(f"{self.log_tab}/traffic_light_violation_rate",
                            self.traffic_light_violation_num / self.eval_n_episodes)
         self.logger.record(f"{self.log_tab}/success_percentage",

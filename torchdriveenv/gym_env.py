@@ -22,7 +22,7 @@ from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
 from torchdrivesim.behavior.iai import IAIWrapper
 from torchdrivesim.goals import WaypointGoal
-from torchdrivesim.kinematic import KinematicBicycle
+from torchdrivesim.kinematic import BicycleNoReversing
 from torchdrivesim.rendering import renderer_from_config
 from torchdrivesim.rendering.base import RendererConfig
 from torchdrivesim.utils import Resolution
@@ -67,7 +67,10 @@ class EnvConfig:
     video_fov: Optional[float] = 500
     record_episode_data: bool = False
     record_replay_data: bool = False
-    use_blame: bool = False
+    terminated_at_blame: bool = False
+    log_blame: bool = False
+    train_replay_data_path: Optional[str] = None
+    val_replay_data_path: Optional[str] = None
 
 
 @dataclass
@@ -99,6 +102,7 @@ class StepData:
     reward: float
     info: Dict
     waypoint: Tuple
+    q: float
 
 
 @dataclass
@@ -170,6 +174,7 @@ class GymEnv(gym.Env):
 
     def get_obs(self):
         birdview = self.simulator.render_egocentric().cpu().numpy()
+#        birdview[0, 0, :, 32:, :] = 0.0
         return birdview
 
     def get_reward(self):
@@ -201,6 +206,7 @@ class GymEnv(gym.Env):
     def render(self):
         if self.render_mode == 'rgb_array':
             birdview = self.simulator.render_egocentric().cpu().numpy()
+#            birdview[0, 0, :, 32:, :] = 0.0
             return np.transpose(birdview.squeeze(), axes=(1, 2, 0))
         else:
             raise NotImplementedError
@@ -283,14 +289,14 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
                     for agent_attribute in scenario.agent_attributes:
                         remain_agent_attributes.append(AgentAttributes(length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
 
-                for i in range(len(background_traffic["agent_states"])):
-                    agent_state = background_traffic["agent_states"][i]
-                    if math.dist(ego_state[:2], (agent_state.center.x, agent_state.center.y)) > 100:
-                        remain_agent_states.append(agent_state)
-                        remain_agent_attributes.append(background_traffic["agent_attributes"][i])
-                        remain_recurrent_states.append(background_traffic["recurrent_states"][i])
+#                for i in range(len(background_traffic["agent_states"])):
+#                    agent_state = background_traffic["agent_states"][i]
+#                    if math.dist(ego_state[:2], (agent_state.center.x, agent_state.center.y)) > 100:
+#                        remain_agent_states.append(agent_state)
+#                        remain_agent_attributes.append(background_traffic["agent_attributes"][i])
+#                        remain_recurrent_states.append(background_traffic["recurrent_states"][i])
                 agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=map_cfg.iai_location_name,
-                       agent_count=max(95 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
+                       agent_count=min(30, max(95 - len(remain_agent_states), background_traffic["agent_density"])), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
                        center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
 
@@ -298,7 +304,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
             0), agent_states.unsqueeze(0)
         agent_attributes, agent_states = agent_attributes.to(device).to(torch.float32), agent_states.to(device).to(
             torch.float32)
-        kinematic_model = KinematicBicycle()
+        kinematic_model = BicycleNoReversing()
         kinematic_model.set_params(lr=agent_attributes[..., 2])
         kinematic_model.set_state(agent_states)
         renderer = renderer_from_config(
@@ -350,7 +356,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
         if cfg.render_mode == "video":
             simulator = BirdviewRecordingWrapper(
                 simulator, res=Resolution(cfg.video_res, cfg.video_res), fov=cfg.video_fov, to_cpu=True)
-        if cfg.record_replay_data or cfg.use_blame:
+        if cfg.record_replay_data or cfg.terminated_at_blame or cfg.log_blame:
             simulator = OfflineDataRecordingWrapper(simulator)
 
         return simulator
@@ -415,15 +421,22 @@ class WaypointSuiteEnv(GymEnv):
                 traffic_light_ids = iai_simulator._traffic_light_ids
                 agent_attributes = iai_simulator._agent_attributes
                 self.replay_data = ReplayRecord(location=self.location, agent_attributes=agent_attributes, traffic_light_ids=traffic_light_ids, agent_states=records["agent_states"], traffic_light_state_history=records["traffic_light_state_history"], waypoint_seq=self.waypoint_suite[self.current_waypoint_suite_idx])
-                with open(f"{self.replay_data_dir}/replay_{self.data_index}.pkl", "wb") as f:
+                with open(f"{self.replay_data_dir}/replay_{self.data_index}_{random.randint(0, 100000)}.pkl", "wb") as f:
                     pickle.dump(self.replay_data, f)
 
         self.data_index += 1
 
-#        self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
-        self.current_waypoint_suite_idx = 3
+        self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
+#        self.current_waypoint_suite_idx = 4
         self.map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
         self.location = self.map_cfgs[self.current_waypoint_suite_idx].name
+#        print(self.location)
+#        while self.location != "carla_Town10HD":
+#            self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
+#    #        self.current_waypoint_suite_idx = 4
+#            self.map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
+#            self.location = self.map_cfgs[self.current_waypoint_suite_idx].name
+
         self.lanelet_map = self.map_cfg.lanelet_map
 
         self.set_start_pos()
@@ -438,6 +451,10 @@ class WaypointSuiteEnv(GymEnv):
 
         self.last_reward = None
         self.last_info = None
+
+        self.last_colliding_agent = None
+        self.last_colliding_step = -100
+
 
         self.reached_waypoint_num = 0
         self.environment_steps = 0
@@ -526,7 +543,7 @@ class WaypointSuiteEnv(GymEnv):
     def check_reach_target(self):
         x = self.simulator.get_state()[..., 0]
         y = self.simulator.get_state()[..., 1]
-        return (self.current_target is not None) and (math.dist((x, y), self.current_target) < 3)
+        return (self.current_target is not None) and (math.dist((x, y), self.current_target) < 5)
 
     def get_reward(self):
         x = self.simulator.get_state()[..., 0]
@@ -534,8 +551,9 @@ class WaypointSuiteEnv(GymEnv):
         psi = self.simulator.get_state()[..., 2]
 
         d = math.dist((x, y), (self.last_x, self.last_y)) if (self.last_x is not None) and (self.last_y is not None) else 0
-        distance_reward = 1 if d > 0.5 else 0
+        distance_reward = 1 if d > 0.1 else 0
         psi_reward = (1 - math.cos(psi - self.last_psi)) * (-20.0) if (self.last_psi is not None) else 0
+#        speed_reward = -1 if d > 0.5 else 0
         if self.check_reach_target():
             reach_target_reward = 10
             self.reached_waypoint_num += 1
@@ -543,14 +561,16 @@ class WaypointSuiteEnv(GymEnv):
             reach_target_reward = 0
         r = torch.zeros_like(x)
         r += reach_target_reward + distance_reward + psi_reward
+#        r += reach_target_reward + psi_reward
+#        r += distance_reward
         return r
 
     def is_terminated(self):
+#                   ((self.simulator.compute_traffic_lights_violations()) > 0)
         if self.config.terminated_at_infraction:
             return (self.simulator.compute_offroad() > 0) or \
                    (self.simulator.compute_collision() > 0 and \
-                           (not self.config.use_blame or self.config.use_blame and self.check_blame())) or \
-                   ((self.simulator.compute_traffic_lights_violations()) > 0)
+                           ((not self.config.terminated_at_blame) or (self.config.terminated_at_blame and self.check_blame()))) # or \
         else:
             return False
 
@@ -561,7 +581,14 @@ class WaypointSuiteEnv(GymEnv):
         agent_attributes = iai_simulator._agent_attributes
         agent_state_history = self.simulator.records["agent_states"]
         distances = [math.dist(agent_state_history[-1][0, 0, :2], agent_state_history[-1][0, i, :2]) for i in range(1, agent_state_history[-1].shape[-2])]
-        return (0 in iai_blame(self.map_cfg.iai_location_name, colliding_agents=(0, np.argmin(distances) + 1), agent_state_history=agent_state_history, agent_attributes=agent_attributes.squeeze(), traffic_light_state_history=self.simulator.records["traffic_light_state_history"]))
+        colliding_agent = np.argmin(distances) + 1
+        if (self.environment_steps > self.last_colliding_step + 1) or (self.last_colliding_agent != colliding_agent):
+            blame_result = (0 in iai_blame(self.map_cfg.iai_location_name, colliding_agents=(0, colliding_agent), agent_state_history=agent_state_history, agent_attributes=agent_attributes.squeeze(), traffic_light_state_history=self.simulator.records["traffic_light_state_history"]))
+        else:
+            blame_result = False
+        self.last_colliding_step = self.environment_steps
+        self.last_colliding_agent = colliding_agent
+        return blame_result
 
 
     def get_info(self):
@@ -577,7 +604,7 @@ class WaypointSuiteEnv(GymEnv):
             psi_smoothness=((self.last_psi - psi) / 0.1).norm(p=2).item(),
             speed_smoothness=((self.last_speed - speed) / 0.1).norm(p=2).item()
         )
-        if (self.info["collision"] > 0) and (self.config.use_blame):
+        if (self.info["collision"] > 0) and (self.config.log_blame):
             self.info["blame"] = self.check_blame()
         else:
             self.info["blame"] = None
