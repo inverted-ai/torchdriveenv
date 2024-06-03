@@ -1,4 +1,0 @@
-[submodule "torchdrivesim"]
-	path = torchdrivesim
-	url = git@github.com:inverted-ai/torchdrivesim.git
-        branch = first-release-env

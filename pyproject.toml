@@ -22,11 +22,12 @@ dependencies = [
     "scipy",
     "imageio",
     "torch>=1.10.1",
-    "invertedai==0.0.16",
+    "invertedai>=0.0.16",
     "omegaconf",
     "opencv-python",
     "gymnasium",
-    "lanelet2"
+    "lanelet2",
+    "torchdrivesim>=0.2.1",
 ]
 dynamic = ["version",]
 
@@ -36,6 +37,9 @@ baselines = ["stable-baselines3",
              "wandb",
              "ipykernel",
              "moviepy"]
+
+[tool.setuptools.dynamic]
+version = {attr = "torchdriveenv.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["torchdriveenv*"]
