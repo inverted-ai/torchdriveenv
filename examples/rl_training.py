@@ -98,7 +98,7 @@ class EvalNTimestepsCallback(BaseCallback):
 
         self.logger.record(f"{self.log_tab}/mean_episode_reward", mean_episode_reward)
         self.logger.record(f"{self.log_tab}/mean_episode_length", mean_episode_length)
-
+        self.logger.record(f"{self.log_tab}/num_timesteps", self.num_timesteps)
         self.logger.record(f"{self.log_tab}/offroad_rate", self.offroad_num / self.eval_n_episodes)
         self.logger.record(f"{self.log_tab}/collision_rate", self.collision_num / self.eval_n_episodes)
         self.logger.record(f"{self.log_tab}/traffic_light_violation_rate", self.traffic_light_violation_num / self.eval_n_episodes)
@@ -106,7 +106,6 @@ class EvalNTimestepsCallback(BaseCallback):
         self.logger.record(f"{self.log_tab}/reached_waypoint_num", sum(self.reached_waypoint_nums) / self.eval_n_episodes)
         self.logger.record(f"{self.log_tab}/psi_smoothness", sum(self.psi_smoothness) / self.eval_n_episodes)
         self.logger.record(f"{self.log_tab}/speed_smoothness", sum(self.speed_smoothness) / self.eval_n_episodes)
-
 
     def _on_training_start(self) -> None:
         self._evaluate()
