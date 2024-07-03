@@ -44,7 +44,7 @@ def load_labeled_data(data_dir):
     for json_file in json_files:
         if json_file[-5:] != ".json":
             continue
-        location = json_file.split('_')[0]
+        location = json_file.split('_')[1]
         waypoint_suite_env_config.locations.append(location)
         json_path=os.path.join(data_dir, json_file)
         with open(json_path) as f:
@@ -83,7 +83,14 @@ def load_labeled_data(data_dir):
             car_sequences = {}
             for id in data["predetermined_agents"]:
                 agent = data["predetermined_agents"][id]
-                if len(agent['states']) > 1:
+                if ("max_speed" in agent["static_attributes"]) and (agent["static_attributes"]["max_speed"] == 0):
+                    car_sequences[int(id)] = []
+                    speed = 0
+                    for i in range(200):
+                        car_sequences[int(id)].append([agent['states']['0']['center']['x'], agent['states']['0']['center']['y'],
+                                                       agent['states']['0']['orientation'], speed])
+
+                elif len(agent['states']) > 1:
                     car_sequences[int(id)] = []
                     speed = 0
                     for i in agent['states']:
