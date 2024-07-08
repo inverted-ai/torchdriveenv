@@ -35,9 +35,9 @@ If you would like to define your own scenarios, Inverted AI provides a tool [her
     * If you would like a car to follow a certain trajectory, first select the car, then select `Add Waypoints` to define a waypoint sequence for the car to follow. To end a sequence, click on the last set waypoint.
     * If you would like to validate your waypoints and initial conditions, you can click on `DRIVE` to run an example of what your simulation might look like, and adjust the scenario as needed.
 
-* Define your ego vehicle initialization range and waypoints with `Start Ego Waypoint Sequence`. The first two points define the range where the starting position is sampled from. To end a sequence, click on the last set waypoint. 
+* Define your ego vehicle initialization range and waypoints with `Start Ego Waypoint Sequence`. The first two points define the range where the starting position is sampled from. To end a sequence, click on the last set waypoint.
 
-* Export your scenario JSON ... <TODO for where to put the JSON, etc>
+* Export your scenario JSON files to the same directory and use [load_labeled_data(data_dir)](https://github.com/inverted-ai/torchdriveenv/blob/master/torchdriveenv/env_utils.py#L31) to load the scenarios.
 
 ## Reward
 The reward for TorchDriveEnv is based on waypoints that are provided to the ego agent, as well as a reward for movement and smoothness. Episodes that cause infractions (causing collisions or going offroad) are terminated early, otherwise the episode is terminated after a fixed number of steps. For a full overview of the reward, refer to the paper linked below. 
