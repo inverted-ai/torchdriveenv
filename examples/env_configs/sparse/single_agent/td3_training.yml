@@ -1,0 +1,30 @@
+algorithm: td3
+project: "paper-experiments-rerun-sparse" 
+total_timesteps: 1e6
+parallel_env_num: 10
+record_training_examples: true  
+
+wandb_callback:
+  verbose: true
+  gradient_save_freq: -1
+  model_save_freq: 5000
+
+env:
+  ego_only: 1
+  frame_stack: 3
+  waypoint_bonus: 100.
+  heading_penalty: 0.
+  distance_bonus: 0.
+  distance_cutoff: 0.25
+ 
+eval_val_callback:
+  n_steps: 25000
+  eval_n_episodes: 10
+  deterministic: true 
+  record: true
+  
+eval_train_callback:
+  n_steps: 25000
+  eval_n_episodes: 10
+  deterministic: true 
+  record: true
