@@ -7,11 +7,12 @@ import argparse
 import numpy as np
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
- 
+import os
+
 # sb3 imports 
 from stable_baselines3 import SAC, PPO, A2C, TD3
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import VecFrameStack, SubprocVecEnv 
+from stable_baselines3.common.vec_env import VecFrameStack, SubprocVecEnv, VecVideoRecorder
 from stable_baselines3.common import type_aliases
 from stable_baselines3.common.vec_env import VecEnv, VecMonitor, is_vecenv_wrapped
 
@@ -20,6 +21,13 @@ import torchdriveenv
 from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data
 from common import BaselineAlgorithm, load_rl_training_config
 
+def search_folder(rootdir):
+    file_list = []
+    for root, directories, file in os.walk(rootdir):
+        for file in file:
+            if(file.endswith(".mp4")):
+                file_list.append(root + '/' + file)
+    return file_list
 
 def evaluate_policy(
     model: "type_aliases.PolicyPredictor",
@@ -171,9 +179,11 @@ if __name__=='__main__':
     
     parser.add_argument("--config_file", type=str, default="env_configs/single_agent/sac_training.yml")  
     parser.add_argument("--entity", type=str, default="iai")
-    parser.add_argument("--project", type=str, default="paper-experiments")
-    parser.add_argument("--run_id", type=str, default="85crkpwb")
- 
+    parser.add_argument("--run_project", type=str, default="paper-experiments")
+    parser.add_argument("--project", type=str, default="paper-evaluations")
+    parser.add_argument("--run_id", type=str, default="")
+    parser.add_argument("--n_eval_episodes", type=str, default=100)
+
     args = parser.parse_args() 
     
     rl_training_config = load_rl_training_config(args.config_file)
@@ -192,8 +202,18 @@ if __name__=='__main__':
     env = VecFrameStack(env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
 
     api = wandb.Api() 
-    run = api.run(args.entity+"/"+args.project+"/"+args.run_id)
+    run = api.run(args.entity+"/"+args.run_project+"/"+args.run_id)
     run.file("model.zip").download(exist_ok=True)
+
+    experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
+    run = wandb.init(
+        name=experiment_name,
+        project=args.project,
+        config=config,
+        sync_tensorboard=False,
+        monitor_gym=True,
+        save_code=True,
+    )
    
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
         model = SAC.load("model.zip", env, verbose=1)
@@ -206,22 +226,42 @@ if __name__=='__main__':
     else:
         raise Exception()
     
+    # general print statement to inform what we are evaluating 
+    print('evaluating: '+args.entity+"/"+args.project+"/"+args.run_id)
+
+    # generate training data 
     eval_train_env = SubprocVecEnv([make_env])
     eval_train_env = VecFrameStack(eval_train_env, n_stack=rl_training_config.env.frame_stack, channels_order="first") 
-    
-    print('evaluating: '+args.entity+"/"+args.project+"/"+args.run_id)
-    
-    x = evaluate_policy(model, eval_train_env, n_eval_episodes=100, deterministic=True)
+    eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',
+            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+    train_eval = evaluate_policy(model, eval_train_env, n_eval_episodes=args.n_eval_episodes, deterministic=True)
     print('Training environment evaluation ...')
-    for k in x.keys():
-        print(k + ": " + str(x[k]))
+    for k in train_eval.keys():
+        print(k + ": " + str(train_eval[k]))
     
+    # generate validation data
     eval_val_env = SubprocVecEnv([make_val_env])
     eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first") 
-    
-    x = evaluate_policy(model, eval_val_env, n_eval_episodes=100, deterministic=True)
+    eval_val_env = VecVideoRecorder(eval_val_env, "videos/"+experiment_name+'/validation',
+            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+    val_eval = evaluate_policy(model, eval_val_env, n_eval_episodes=args.n_eval_episodes, deterministic=True)
     print('Validation environment evaluation ...')
-    for k in x.keys():
-        print(k + ": " + str(x[k]))
-    
+    for k in val_eval.keys():
+        print(k + ": " + str(val_eval[k]))
+
+    # combine infos
+    log_info = {}
+    log_info.update({'train/'+k:train_eval[k]for k in train_eval.keys()})
+    log_info.update({'val/'+k:val_eval[k]for k in val_eval.keys()}) 
+
+     # grab all the videos
+    video_files = search_folder('./videos/'+experiment_name)
+    for i, vid in enumerate(video_files):
+        if 'val' in vid:
+            log_info.update({"val_example_"+str(i): wandb.Video(vid)})
+        else:
+            log_info.update({"train_example_"+str(i): wandb.Video(vid)})
+
+    # log to wandb
+    wandb.log(log_info)
 
