@@ -164,7 +164,8 @@ if __name__=='__main__':
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
         model = SAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam})
+                    policy_kwargs={'optimizer_class':torch.optim.Adam},
+                    optimize_memory_usage=False, buffer_size=500000)
 
     if rl_training_config.algorithm == BaselineAlgorithm.ppo:
         model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
@@ -179,7 +180,8 @@ if __name__=='__main__':
     if rl_training_config.algorithm == BaselineAlgorithm.td3:
         model = TD3("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam}, 
-                    train_freq=1, gradient_steps=1)
+                    train_freq=1, gradient_steps=1,
+                    optimize_memory_usage=False, buffer_size=500000)
  
     eval_val_env = SubprocVecEnv([make_val_env])
     eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
