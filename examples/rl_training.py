@@ -1,9 +1,17 @@
+import sys
+sys.path.insert(0, "..")
+sys.path.insert(0, "../torchdrivesim")
+sys.path.insert(0, "../stable-baselines3")
+
 import time
 import torch
 import wandb
 import gymnasium as gym
 from typing import Any, Dict
 import argparse
+
+import stable_baselines3
+print(stable_baselines3.__path__)
 
 from stable_baselines3 import SAC, PPO, A2C, TD3
 from stable_baselines3.common.monitor import Monitor

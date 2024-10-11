@@ -1,8 +1,8 @@
 algorithm: sac
-project: "paper-experiments" 
+project: "critic-experiments"
 total_timesteps: 1e6
 parallel_env_num: 10
-record_training_examples: true  
+record_training_examples: true
 
 wandb_callback:
   verbose: true
@@ -16,15 +16,15 @@ env:
   heading_penalty: 25.
   distance_bonus: 1.
   distance_cutoff: 0.25
- 
+
 eval_val_callback:
   n_steps: 1000
   eval_n_episodes: 1
-  deterministic: true 
+  deterministic: true
   record: true
-  
+
 eval_train_callback:
   n_steps: 1000
   eval_n_episodes: 1
-  deterministic: true 
+  deterministic: true
   record: true

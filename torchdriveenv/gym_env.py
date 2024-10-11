@@ -407,8 +407,17 @@ class WaypointSuiteEnv(GymEnv):
         else:
             reach_target_reward = 0
         r = torch.zeros_like(x)
+#        r += reach_target_reward + distance_reward + psi_reward
         r += reach_target_reward + distance_reward + psi_reward
-        return r.item()
+        r = r.item()
+        encounter_infractions = ((self.simulator.compute_offroad() > 0) or (self.simulator.compute_collision() > 0) or (self.simulator.compute_traffic_lights_violations() > 0)).item()
+        if encounter_infractions:
+            r = float('-inf')
+        else:
+#            r = 0
+            r /= 1000
+#            r = -1000.0
+        return r
 
     def is_terminated(self):
         if self.config.terminated_at_infraction:
