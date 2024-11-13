@@ -1,10 +1,9 @@
-algorithm: ppo
+algorithm: sac
 parallel_env_num: 6
 env:
   ego_only: False
-  record_episode_data: False
+  record_episode_data: True
   record_replay_data: False
   log_blame: False
   terminated_at_blame: False
-  train_replay_data_path: /home/kezhang/work/torchdriveenv/examples/offline_datasets/replay_data_Town10HD_training
-  val_replay_data_path: /home/kezhang/work/torchdriveenv/examples/offline_datasets/replay_data_Town10HD_validation
+  use_expert_action: True

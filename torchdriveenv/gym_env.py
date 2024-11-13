@@ -20,9 +20,9 @@ import torch
 from torch import Tensor
 from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
-from torchdrivesim.behavior.iai import IAIWrapper
+from torchdrivesim.behavior.iai import IAIWrapper, iai_drive
 from torchdrivesim.goals import WaypointGoal
-from torchdrivesim.kinematic import BicycleNoReversing
+from torchdrivesim.kinematic import BicycleNoReversing, KinematicBicycle
 from torchdrivesim.rendering import renderer_from_config
 from torchdrivesim.rendering.base import RendererConfig
 from torchdrivesim.utils import Resolution
@@ -56,6 +56,7 @@ class EnvConfig:
     max_environment_steps: int = 200
     use_background_traffic: bool = True
     terminated_at_infraction: bool = True
+    use_expert_action: bool = True
     seed: Optional[int] = None
     simulator: TorchDriveConfig = TorchDriveConfig(renderer=RendererConfig(left_handed_coordinates=True,
                                                                            highlight_ego_vehicle=True),
@@ -99,10 +100,11 @@ class WaypointSuite:
 class StepData:
     obs_birdview: List
     ego_action: Tuple
+    recurrent_states: List[List[float]]
     reward: float
     info: Dict
     waypoint: Tuple
-    q: float
+#    q: float
 
 
 @dataclass
@@ -145,7 +147,8 @@ class GymEnv(gym.Env):
             high=action_range[1],
             dtype=np.float32
         )
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(
+            low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
 
         self.reward_range = (- float('inf'), float('inf'))
         self.collision_threshold = 0.0
@@ -212,7 +215,7 @@ class GymEnv(gym.Env):
             raise NotImplementedError
 
     def mock_step(self):
-        obs = np.zeros((1, 3, 64, 64)) # self.last_obs
+        obs = np.zeros((1, 3, 64, 64))  # self.last_obs
         reward = 0
         terminated = False
         truncated = True
@@ -243,21 +246,24 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
         device = torch.device("cuda")
         traffic_light_controller = map_cfg.traffic_light_controller
         initial_light_state_name = traffic_light_controller.current_state_with_name
-        traffic_light_ids = [stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
+        traffic_light_ids = [
+            stopline.actor_id for stopline in map_cfg.stoplines if stopline.agent_type == 'traffic-light']
         driving_surface_mesh = map_cfg.road_mesh.to(device)
 
-
         traffic_controls = traffic_controls_from_map_config(map_cfg)
-        traffic_controls = {key: traffic_controls[key].to(device) for key in traffic_controls}
-        traffic_controls['traffic_light'].set_state(current_light_state_tensor_from_controller(traffic_light_controller, traffic_light_ids).unsqueeze(0).to(device))
-
+        traffic_controls = {key: traffic_controls[key].to(
+            device) for key in traffic_controls}
+        traffic_controls['traffic_light'].set_state(current_light_state_tensor_from_controller(
+            traffic_light_controller, traffic_light_ids).unsqueeze(0).to(device))
 
         if cfg.ego_only:
-            agent_states = torch.Tensor([ego_state[0], ego_state[1], ego_state[2], ego_state[3]]).unsqueeze(0)
+            agent_states = torch.Tensor(
+                [ego_state[0], ego_state[1], ego_state[2], ego_state[3]]).unsqueeze(0)
             length = np.random.random() * (5.5 - 4.8) + 4.8
             width = np.random.random() * (2.2 - 1.8) + 1.8
             rear_axis_offset = np.random.random() * (0.97 - 0.82) + 0.82
-            agent_attributes = torch.Tensor([length, width, rear_axis_offset]).unsqueeze(0)
+            agent_attributes = torch.Tensor(
+                [length, width, rear_axis_offset]).unsqueeze(0)
             recurrent_states = torch.Tensor([0] * 132).unsqueeze(0)
         else:
             if cfg.use_background_traffic:
@@ -265,29 +271,39 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
                     os.path.dirname(os.path.realpath(
                         __file__)), f"resources/background_traffic")
                 while True:
-                    background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(lambda x: x.split("_")[1]==map_cfg.name[6:], os.listdir(background_traffic_dir)))))
+                    background_traffic_file = os.path.join(background_traffic_dir, random.choice(list(filter(
+                        lambda x: x.split("_")[1] == map_cfg.name[6:], os.listdir(background_traffic_dir)))))
                     with open(background_traffic_file, "r") as f:
                         background_traffic_json = json.load(f)
                     background_traffic = {}
                     background_traffic['location'] = background_traffic_json['location']
                     background_traffic['agent_density'] = background_traffic_json['agent_density']
                     background_traffic['random_seed'] = background_traffic_json['random_seed']
-                    background_traffic['agent_states'] = [AgentState.model_validate(agent_state) for agent_state in background_traffic_json['agent_states']]
-                    background_traffic['agent_attributes'] = [AgentAttributes.model_validate(agent_attribute) for agent_attribute in background_traffic_json['agent_attributes']]
-                    background_traffic['recurrent_states'] = [RecurrentState.model_validate(recurrent_state) for recurrent_state in background_traffic_json['recurrent_states']]
+                    background_traffic['agent_states'] = [AgentState.model_validate(
+                        agent_state) for agent_state in background_traffic_json['agent_states']]
+                    background_traffic['agent_attributes'] = [AgentAttributes.model_validate(
+                        agent_attribute) for agent_attribute in background_traffic_json['agent_attributes']]
+                    background_traffic['recurrent_states'] = [RecurrentState.model_validate(
+                        recurrent_state) for recurrent_state in background_traffic_json['recurrent_states']]
 
                     if len(background_traffic["agent_states"]) + background_traffic["agent_density"] < 100:
                         break
 
-                remain_agent_states = [AgentState(center=Point(x=ego_state[0], y=ego_state[1]), orientation=ego_state[2], speed=ego_state[3])]
-                remain_agent_attributes = [background_traffic["agent_attributes"][0]]
-                remain_recurrent_states = [background_traffic["recurrent_states"][0]]
+                remain_agent_states = [AgentState(center=Point(
+                    x=ego_state[0], y=ego_state[1]), orientation=ego_state[2], speed=ego_state[3])]
+                remain_agent_attributes = [
+                    background_traffic["agent_attributes"][0]]
+                remain_recurrent_states = [
+                    background_traffic["recurrent_states"][0]]
                 if scenario is not None:
                     for agent_state in scenario.agent_states:
-                        remain_agent_states.append(AgentState(center=Point(x=agent_state[0], y=agent_state[1]), orientation=agent_state[2], speed=agent_state[3]))
-                        remain_recurrent_states.append(background_traffic["recurrent_states"][0])
+                        remain_agent_states.append(AgentState(center=Point(
+                            x=agent_state[0], y=agent_state[1]), orientation=agent_state[2], speed=agent_state[3]))
+                        remain_recurrent_states.append(
+                            background_traffic["recurrent_states"][0])
                     for agent_attribute in scenario.agent_attributes:
-                        remain_agent_attributes.append(AgentAttributes(length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
+                        remain_agent_attributes.append(AgentAttributes(
+                            length=agent_attribute[0], width=agent_attribute[1], rear_axis_offset=agent_attribute[2]))
 
 #                for i in range(len(background_traffic["agent_states"])):
 #                    agent_state = background_traffic["agent_states"][i]
@@ -299,7 +315,6 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
                        agent_count=min(30, max(95 - len(remain_agent_states), background_traffic["agent_density"])), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
                        center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
-
         agent_attributes, agent_states = agent_attributes.unsqueeze(
             0), agent_states.unsqueeze(0)
         agent_attributes, agent_states = agent_attributes.to(device).to(torch.float32), agent_states.to(device).to(
@@ -310,12 +325,13 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
         renderer = renderer_from_config(
             cfg.simulator.renderer, static_mesh=driving_surface_mesh)
 
-
         # BxAxNxMx2
         agent_num = agent_states.shape[1]
-        waypoints = dict(vehicle=torch.Tensor(waypointseq).unsqueeze(-2).unsqueeze(0).unsqueeze(0).expand(-1, agent_num, -1, -1, -1).to(device))
+        waypoints = dict(vehicle=torch.Tensor(waypointseq).unsqueeze(-2).unsqueeze(
+            0).unsqueeze(0).expand(-1, agent_num, -1, -1, -1).to(device))
         # BxAxNxM
-        mask = dict(vehicle=torch.tensor([False] + [True] * (len(waypointseq) - 1)).unsqueeze(-1).unsqueeze(0).unsqueeze(0).expand(-1, agent_num, -1, -1).to(device))
+        mask = dict(vehicle=torch.tensor([False] + [True] * (len(waypointseq) - 1)).unsqueeze(-1).unsqueeze(
+            0).unsqueeze(0).expand(-1, agent_num, -1, -1).to(device))
         waypoint_goals = WaypointGoal(waypoints, mask)
 
         simulator = Simulator(
@@ -335,8 +351,10 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
         if car_sequences is not None and len(car_sequences) > 0:
             T = max([len(car_seq) for car_seq in car_sequences.values()])
             replay_states = torch.zeros((1, agent_num, T, 4))
-            replay_mask = torch.zeros(replay_states.shape[:3], dtype=torch.bool)
-            replay_states[:, list(car_sequences.keys()), :, :] = torch.Tensor(list(car_sequences.values())).unsqueeze(0)
+            replay_mask = torch.zeros(
+                replay_states.shape[:3], dtype=torch.bool)
+            replay_states[:, list(car_sequences.keys()), :, :] = torch.Tensor(
+                list(car_sequences.values())).unsqueeze(0)
             replay_mask[:, list(car_sequences.keys()), :] = True
         else:
             replay_states = None
@@ -366,12 +384,15 @@ class WaypointSuiteEnv(GymEnv):
     def __init__(self, cfg: EnvConfig, data: WaypointSuite):
         self.config = cfg
         set_seeds(self.config.seed, logger)
-        self.map_cfgs = [find_map_config(f"carla_{location}") for location in data.locations]
+        self.map_cfgs = [find_map_config(
+            f"carla_{location}") for location in data.locations]
 
         self.waypoint_suite = data.waypoint_suite
         self.car_sequence_suite = data.car_sequence_suite
         self.scenarios = data.scenarios
         super().__init__(cfg=cfg, simulator=None)
+        if self.config.use_expert_action:
+            self.expert_kinematic_model = KinematicBicycle(left_handed=True)
         if self.config.record_episode_data:
             self.episode_data = None
             self.episode_data_dir = f"offline_datasets/episode_data_{datetime.now().strftime('%Y%m%d-%H%M')}"
@@ -420,13 +441,15 @@ class WaypointSuiteEnv(GymEnv):
                     iai_simulator = iai_simulator.inner_simulator
                 traffic_light_ids = iai_simulator._traffic_light_ids
                 agent_attributes = iai_simulator._agent_attributes
-                self.replay_data = ReplayRecord(location=self.location, agent_attributes=agent_attributes, traffic_light_ids=traffic_light_ids, agent_states=records["agent_states"], traffic_light_state_history=records["traffic_light_state_history"], waypoint_seq=self.waypoint_suite[self.current_waypoint_suite_idx])
+                self.replay_data = ReplayRecord(location=self.location, agent_attributes=agent_attributes, traffic_light_ids=traffic_light_ids, agent_states=records[
+                                                "agent_states"], traffic_light_state_history=records["traffic_light_state_history"], waypoint_seq=self.waypoint_suite[self.current_waypoint_suite_idx])
                 with open(f"{self.replay_data_dir}/replay_{self.data_index}_{random.randint(0, 100000)}.pkl", "wb") as f:
                     pickle.dump(self.replay_data, f)
 
         self.data_index += 1
 
-        self.current_waypoint_suite_idx = np.random.randint(len(self.waypoint_suite))
+        self.current_waypoint_suite_idx = np.random.randint(
+            len(self.waypoint_suite))
 #        self.current_waypoint_suite_idx = 4
         self.map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
         self.location = self.map_cfgs[self.current_waypoint_suite_idx].name
@@ -443,7 +466,8 @@ class WaypointSuiteEnv(GymEnv):
         self.current_target_idx = 1
         self.current_target = self.waypoint_suite[self.current_waypoint_suite_idx][self.current_target_idx]
 
-        ego_state = (self.start_point[0], self.start_point[1], self.start_orientation, self.start_speed)
+        ego_state = (self.start_point[0], self.start_point[1],
+                     self.start_orientation, self.start_speed)
 
         self.last_x = None
         self.last_y = None
@@ -454,7 +478,6 @@ class WaypointSuiteEnv(GymEnv):
 
         self.last_colliding_agent = None
         self.last_colliding_step = -100
-
 
         self.reached_waypoint_num = 0
         self.environment_steps = 0
@@ -488,6 +511,48 @@ class WaypointSuiteEnv(GymEnv):
                                                                    x=self.start_point[0], y=self.start_point[1])[0]) \
                                      + np.random.normal(0, 0.1)
 
+    def expert_prediction(self):
+#        location = f'carla:{":".join(self.map_cfgs[self.current_waypoint_suite_idx].name.split("_"))}'
+        location = self.map_cfgs[self.current_waypoint_suite_idx].iai_location_name
+        agent_states = self.simulator.get_innermost_simulator().get_state()["vehicle"].squeeze(0).cpu().numpy()
+        iai_simulator = self.simulator
+        if not isinstance(iai_simulator, IAIWrapper):
+            iai_simulator = iai_simulator.inner_simulator
+            if not isinstance(iai_simulator, IAIWrapper):
+                iai_simulator = iai_simulator.inner_simulator
+#        print("simulator")
+#        print(self.simulator)
+#        print(self.simulator.inner_simulator)
+#        print(iai_simulator)
+        agent_attributes = iai_simulator._agent_attributes
+#        recurrent_states = self.simulator._recurrent_states
+        traffic_lights_states = iai_simulator._traffic_light_controller.current_state_with_name
+        waypoint_for_ego = self.current_target
+#               "recurrent_states": recurrent_states[0],
+        obs = {"location": location,
+               "agent_states": agent_states,
+               "agent_attributes": agent_attributes[0],
+               "recurrent_states": None,
+               "traffic_lights_states": traffic_lights_states,
+               "waypoint_for_ego": waypoint_for_ego}
+        states, iai_recurrent_states = iai_drive(location=obs["location"],
+                                             agent_states=obs["agent_states"],
+                                             agent_attributes=obs["agent_attributes"],
+                                             recurrent_states=obs["recurrent_states"],
+                                             traffic_lights_states=obs["traffic_lights_states"],
+                                             waypoint_for_ego=obs["waypoint_for_ego"])
+
+        action = self.expert_kinematic_model.fit_action(
+                    future_state=states[0], current_state=torch.Tensor(
+                        obs["agent_states"][0])
+                ).to(torch.device("cuda"))
+        recurrent_states = [recurrent_state.packed for recurrent_state in iai_recurrent_states]
+        action = action.unsqueeze(0).unsqueeze(0)
+#        print("action")
+#        print(action)
+        return action, recurrent_states
+
+
     def step(self, action: Tensor):
 #        try:
 #@dataclass
@@ -503,6 +568,14 @@ class WaypointSuiteEnv(GymEnv):
 #class EpisodeData:
 #    location: str
 #    step_data: List[StepData]
+#        print("action from RL")
+#        print(action)
+        if self.config.use_expert_action:
+#            self.expert_action = self.expert_prediction()
+#            self.action = action
+            action, recurrent_states = self.expert_prediction()
+        else:
+            recurrent_states = None
 
         state = self.simulator.get_state()
         self.last_x = state[..., 0]
@@ -514,6 +587,7 @@ class WaypointSuiteEnv(GymEnv):
         if self.config.record_episode_data:
             step_data = StepData(obs_birdview=self.last_obs,
                                  ego_action=action,
+                                 recurrent_states=recurrent_states,
                                  reward=reward,
                                  info=info,
                                  waypoint=self.current_target)

@@ -11,7 +11,6 @@ from stable_baselines3 import SAC, PPO, A2C, TD3
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import VecVideoRecorder, VecFrameStack, SubprocVecEnv, DummyVecEnv
 
-import torchdriveenv
 from torchdriveenv.gym_env import BaselineAlgorithm
 from torchdriveenv.env_utils import load_waypoint_suite_data, load_rl_training_config, EvalNTimestepsCallback, load_replay_data
 
@@ -41,7 +40,7 @@ def make_env():
 def make_val_env():
     eval_env_config = env_config
     eval_env_config.terminated_at_blame = False
-    eval_env_config.log_blame = True
+#    eval_env_config.log_blame = True
     eval_env_config.ego_only = False
     env = gym.make('torchdriveenv-v0', args={'cfg': eval_env_config, 'data': validation_data})
     env = Monitor(env, info_keywords=("offroad", "collision", "traffic_light_violation"))
@@ -50,10 +49,10 @@ def make_val_env():
 
 if __name__=='__main__':
     config = {"policy_type": "CnnPolicy", "total_timesteps": 5000000}
-    experiment_name = f"{rl_training_config.algorithm}_without_blame_{int(time.time())}"
+    experiment_name = f"collect_expert_dataset_{int(time.time())}"
     wandb.init(
         name=experiment_name,
-        project="stable_baselines3",
+        project="EBDM",
         config=config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -66,9 +65,9 @@ if __name__=='__main__':
         record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
-#        model = SAC(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-#                    policy_kwargs={'optimizer_class':torch.optim.Adam})
-        model = SAC.load("mid_dist_reward_trained_models/BaselineAlgorithm.sac_without_blame_1715828795/model", env=env)
+        model = SAC(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                    policy_kwargs={'optimizer_class':torch.optim.Adam})
+#        model = SAC.load("mid_dist_reward_trained_models/BaselineAlgorithm.sac_without_blame_1715828795/model", env=env)
 
     if rl_training_config.algorithm == BaselineAlgorithm.ppo:
         model = PPO(config["policy_type"], env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
