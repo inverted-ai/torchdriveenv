@@ -32,7 +32,7 @@ from torchdrivesim.traffic_lights import current_light_state_tensor_from_control
 from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
     BirdviewRecordingWrapper, Simulator, HomogeneousWrapper, CollisionMetric
 
-from torchdriveenv.helpers import save_video, set_seeds
+from torchdriveenv.helpers import save_video, set_seeds, sample_waypoints_from_graph
 from torchdriveenv.iai import iai_conditional_initialize, iai_blame
 from torchdriveenv.record_data import OfflineDataRecordingWrapper
 
@@ -89,11 +89,20 @@ class Scenario:
 
 
 @dataclass
+class Node:
+    id: int
+    point: Tuple[float]
+    next_node_ids: List[int]
+    next_edges: List[float]
+
+
+@dataclass
 class WaypointSuite:
     locations: List[str] = None
     waypoint_suite: List[List[List[float]]] = None
     car_sequence_suite: List[Optional[Dict[int, List[List[float]]]]] = None
     scenarios: List[Optional[Scenario]] = None
+    waypoint_graphs: List[List[Node]] = None
 
 
 @dataclass
@@ -341,8 +350,9 @@ def build_simulator(cfg: EnvConfig, map_cfg, ego_state, scenario=None, car_seque
                 agent_states[..., 0], dtype=torch.bool)),
             renderer=renderer,
             traffic_controls=traffic_controls,
-            waypoint_goals=waypoint_goals
+            waypoint_goals=None
         )
+#            waypoint_goals=waypoint_goals
         simulator = HomogeneousWrapper(simulator)
         npc_mask = torch.ones(
             agent_states.shape[-2], dtype=torch.bool, device=agent_states.device)
@@ -388,6 +398,7 @@ class WaypointSuiteEnv(GymEnv):
             f"carla_{location}") for location in data.locations]
 
         self.waypoint_suite = data.waypoint_suite
+        self.waypoint_graphs = data.waypoint_graphs
         self.car_sequence_suite = data.car_sequence_suite
         self.scenarios = data.scenarios
         super().__init__(cfg=cfg, simulator=None)
@@ -429,8 +440,9 @@ class WaypointSuiteEnv(GymEnv):
         if self.config.record_episode_data:
             if self.data_index >= 0:
                 self.episode_data.location = self.location
-                with open(f"{self.episode_data_dir}/episode_{self.data_index}_{random.randint(0, 100000)}.pkl", "wb") as f:
-                    pickle.dump(self.episode_data, f)
+                if len(self.episode_data.step_data) > 0:
+                    with open(f"{self.episode_data_dir}/episode_{self.data_index}_{random.randint(0, 100000)}.pkl", "wb") as f:
+                        pickle.dump(self.episode_data, f)
             self.episode_data = EpisodeData(location="", step_data=[])
 
         if self.config.record_replay_data:
@@ -461,6 +473,8 @@ class WaypointSuiteEnv(GymEnv):
 #            self.location = self.map_cfgs[self.current_waypoint_suite_idx].name
 
         self.lanelet_map = self.map_cfg.lanelet_map
+        if (self.waypoint_graphs is not None) and (self.waypoint_graphs[self.current_waypoint_suite_idx] is not None):
+            self.waypoint_suite[self.current_waypoint_suite_idx] = sample_waypoints_from_graph(self.waypoint_graphs[self.current_waypoint_suite_idx])
 
         self.set_start_pos()
         self.current_target_idx = 1

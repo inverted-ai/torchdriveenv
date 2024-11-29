@@ -1,5 +1,5 @@
 algorithm: sac
-parallel_env_num: 6
+parallel_env_num: 28
 env:
   ego_only: False
   record_episode_data: True

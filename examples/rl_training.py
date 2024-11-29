@@ -12,7 +12,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import VecVideoRecorder, VecFrameStack, SubprocVecEnv, DummyVecEnv
 
 from torchdriveenv.gym_env import BaselineAlgorithm
-from torchdriveenv.env_utils import load_waypoint_suite_data, load_rl_training_config, EvalNTimestepsCallback, load_replay_data
+from torchdriveenv.env_utils import load_waypoint_suite_data, load_rl_training_config, EvalNTimestepsCallback, load_replay_data, load_labeled_data
 
 from wandb.integration.sb3 import WandbCallback
 
@@ -20,15 +20,17 @@ from wandb.integration.sb3 import WandbCallback
 rl_training_config = load_rl_training_config("env_configs/rl_training.yml")
 env_config = rl_training_config.env
 
-if env_config.train_replay_data_path is not None:
-    training_data = load_replay_data(env_config.train_replay_data_path)
-else:
-    training_data = load_waypoint_suite_data("data/training_cases.yml")
-
-if env_config.val_replay_data_path is not None:
-    validation_data = load_replay_data(env_config.val_replay_data_path, add_car_seq=False)
-else:
-    validation_data = load_waypoint_suite_data("data/validation_cases.yml")
+training_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+validation_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+# if env_config.train_replay_data_path is not None:
+#     training_data = load_replay_data(env_config.train_replay_data_path)
+# else:
+#     training_data = load_waypoint_suite_data("data/training_cases.yml")
+# 
+# if env_config.val_replay_data_path is not None:
+#     validation_data = load_replay_data(env_config.val_replay_data_path, add_car_seq=False)
+# else:
+#     validation_data = load_waypoint_suite_data("data/validation_cases.yml")
 
 
 def make_env():
@@ -96,11 +98,11 @@ if __name__=='__main__':
 #        record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 #                  eval_val_callback,
 #                      eval_train_callback,
+#                        eval_val_callback,
 
     model.learn(
             total_timesteps=config["total_timesteps"],
             callback=[
-                        eval_val_callback,
                         WandbCallback(
                         verbose=1,
                         gradient_save_freq=100,
