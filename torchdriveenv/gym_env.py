@@ -109,6 +109,7 @@ class WaypointSuite:
 class StepData:
     obs_birdview: List
     ego_action: Tuple
+    ego_state: List
     recurrent_states: List[List[float]]
     reward: float
     info: Dict
@@ -556,15 +557,15 @@ class WaypointSuiteEnv(GymEnv):
                                              traffic_lights_states=obs["traffic_lights_states"],
                                              waypoint_for_ego=obs["waypoint_for_ego"])
 
+        current_state = torch.Tensor(obs["agent_states"][0])
+
         action = self.expert_kinematic_model.fit_action(
-                    future_state=states[0], current_state=torch.Tensor(
-                        obs["agent_states"][0])
-                ).to(torch.device("cuda"))
+                    future_state=states[0], current_state=current_state).to(torch.device("cuda"))
         recurrent_states = [recurrent_state.packed for recurrent_state in iai_recurrent_states]
         action = action.unsqueeze(0).unsqueeze(0)
 #        print("action")
 #        print(action)
-        return action, recurrent_states
+        return action, recurrent_states, current_state
 
 
     def step(self, action: Tensor):
@@ -587,9 +588,11 @@ class WaypointSuiteEnv(GymEnv):
         if self.config.use_expert_action:
 #            self.expert_action = self.expert_prediction()
 #            self.action = action
-            action, recurrent_states = self.expert_prediction()
+            action, recurrent_states, ego_state = self.expert_prediction()
         else:
             recurrent_states = None
+            agent_states = self.simulator.get_innermost_simulator().get_state()["vehicle"].squeeze(0).cpu().numpy()
+            ego_state = torch.Tensor(agent_states[0])
 
         state = self.simulator.get_state()
         self.last_x = state[..., 0]
@@ -601,6 +604,7 @@ class WaypointSuiteEnv(GymEnv):
         if self.config.record_episode_data:
             step_data = StepData(obs_birdview=self.last_obs,
                                  ego_action=action,
+                                 ego_state=ego_state,
                                  recurrent_states=recurrent_states,
                                  reward=reward,
                                  info=info,
