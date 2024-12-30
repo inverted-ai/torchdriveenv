@@ -5,6 +5,7 @@ import inspect
 import json
 import random
 import numpy as np
+from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, List, Dict
 
@@ -26,9 +27,16 @@ from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
 
 from torchdriveenv.helpers import save_video, set_seeds
 from torchdriveenv.iai import iai_conditional_initialize
+from torchdriveenv.diffusion_expert import DiffusionExpert
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+class RealisticMetric(Enum):
+    manual = 'manual'
+    expert_mse = 'expert_mse'
+    expert_diffusion_elbo = 'expert_diffusion_elbo'
 
 
 @dataclass
@@ -42,7 +50,10 @@ class EnvConfig:
     distance_cutoff: float = 0.5
     use_background_traffic: bool = True
     terminated_at_infraction: bool = True
-    use_expert_similarity: bool = True
+    infraction_penalty: float = 0
+#    use_expert_similarity: bool = False
+    realistic_metric: RealisticMetric = RealisticMetric.expert_diffusion_elbo
+    pretrained_diffusion_expert_path: Optional[str] = "pretrained_edm_module/model.ckpt"
     seed: Optional[int] = None
     simulator: TorchDriveConfig = TorchDriveConfig(renderer=RendererConfig(left_handed_coordinates=True,
                                                                            highlight_ego_vehicle=True),
@@ -336,8 +347,11 @@ class WaypointSuiteEnv(GymEnv):
         self.waypoint_suite = data.waypoint_suite
         self.car_sequence_suite = data.car_sequence_suite
         self.scenarios = data.scenarios
-        if self.config.use_expert_similarity:
+#        if self.config.use_expert_similarity:
+        if self.config.realistic_metric == RealisticMetric.expert_mse:
             self.expert_kinematic_model = KinematicBicycle(left_handed=True)
+        elif self.config.realistic_metric == RealisticMetric.expert_diffusion_elbo:
+            self.diffusion_expert = DiffusionExpert(self.config.pretrained_diffusion_expert_path)
         super().__init__(cfg=cfg, simulator=None)
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -371,8 +385,9 @@ class WaypointSuiteEnv(GymEnv):
                                          car_sequences=self.car_sequence_suite[self.current_waypoint_suite_idx],
                                          waypointseq=self.waypoint_suite[self.current_waypoint_suite_idx],
                                          device=self.torch_device)
-
-        return self.get_obs(), {}
+        self.last_obs = self.get_obs()
+        self.obs_list = [np.zeros((1, 1, 3, 64, 64)), np.zeros((1, 1, 3, 64, 64)), self.last_obs]
+        return self.last_obs, {}
 
     def set_start_pos(self):
         self.waypoints = self.waypoint_suite[self.current_waypoint_suite_idx]
@@ -422,9 +437,10 @@ class WaypointSuiteEnv(GymEnv):
 
     def step(self, action: np.array):
         #        try:
-        if self.config.use_expert_similarity:
+#        if self.config.use_expert_similarity:
+        if self.config.realistic_metric == RealisticMetric.expert_mse:
             self.expert_action = self.expert_prediction()
-            self.action = action
+        self.action = action
         state = self.simulator.get_state()
         self.last_x = state[..., 0]
         self.last_y = state[..., 1]
@@ -441,6 +457,7 @@ class WaypointSuiteEnv(GymEnv):
         self.last_obs = obs
         self.last_reward = reward
         self.last_info = info
+        self.obs_list.append(obs)
 #        except Exception as e:
 #            obs, reward, terminated, truncated, info = self.mock_step()
         return obs, reward, terminated, truncated, info
@@ -451,44 +468,61 @@ class WaypointSuiteEnv(GymEnv):
         return (self.current_target is not None) and (math.dist((x, y), self.current_target) < 3)
 
     def get_reward(self):
-        if self.config.use_expert_similarity:
-            encounter_infractions = ((self.simulator.compute_offroad() > 0) or (
-                self.simulator.compute_collision() > 0) or (self.simulator.compute_traffic_lights_violations() > 0)).item()
-            if encounter_infractions:
-                r = float('-inf')
-            else:
-                expert_action = self.expert_action.clip(min=torch.Tensor([-1.0, -0.3]).to(self.torch_device), max=torch.Tensor([1.0, 0.3]).to(self.torch_device))
-                r = torch.log(1 - torch.linalg.vector_norm(expert_action - self.action.squeeze()) / torch.linalg.vector_norm(torch.Tensor([2.0, 0.6]).to(self.torch_device)))
-#                print("expert_action: ", expert_action)
-#                print("action: ", self.action)
-#            print("reward: ", r)
-            return r
-
-        x = self.simulator.get_state()[..., 0]
-        y = self.simulator.get_state()[..., 1]
-        psi = self.simulator.get_state()[..., 2]
-
-        d = math.dist((x, y), (self.last_x, self.last_y)) if (
-            self.last_x is not None) and (self.last_y is not None) else 0
-        distance_reward = self.config.distance_bonus if d > self.config.distance_cutoff else 0
-        psi_reward = (1 - math.cos(psi - self.last_psi)) * \
-            (- self.config.heading_penalty) if (self.last_psi is not None) else 0
-        if self.check_reach_target():
-            reach_target_reward = self.config.waypoint_bonus
-            self.reached_waypoint_num += 1
-        else:
-            reach_target_reward = 0
-        r = torch.zeros_like(x)
-#        r += reach_target_reward + distance_reward + psi_reward
-        r += reach_target_reward + distance_reward + psi_reward
-        r = r.item()
+#        if self.config.use_expert_similarity:
         encounter_infractions = ((self.simulator.compute_offroad() > 0) or (
             self.simulator.compute_collision() > 0) or (self.simulator.compute_traffic_lights_violations() > 0)).item()
-        if encounter_infractions:
-            r = float('-inf')
+
+        safety_reward = -self.config.infraction_penalty if encounter_infractions else 0
+
+        if self.config.realistic_metric == RealisticMetric.expert_mse:
+            expert_action = self.expert_action.clip(min=torch.Tensor([-1.0, -0.3]).to(self.torch_device), max=torch.Tensor([1.0, 0.3]).to(self.torch_device))
+            realistic_reward = torch.log(1 - torch.linalg.vector_norm(expert_action - self.action.squeeze()) / torch.linalg.vector_norm(torch.Tensor([2.0, 0.6]).to(self.torch_device)))
+        elif self.config.realistic_metric == RealisticMetric.expert_diffusion_elbo:
+            stacked_obs = np.concatenate(self.obs_list[-3:], axis=-3)
+            realistic_reward = self.diffusion_expert.expert_prob(action=self.action.squeeze(), observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze())
         else:
-            #            r = 0
-            r /= 1000
+#            if encounter_infractions:
+#                r = float('-inf')
+#            else:
+#                expert_action = self.expert_action.clip(min=torch.Tensor([-1.0, -0.3]).to(self.torch_device), max=torch.Tensor([1.0, 0.3]).to(self.torch_device))
+#                r = torch.log(1 - torch.linalg.vector_norm(expert_action - self.action.squeeze()) / torch.linalg.vector_norm(torch.Tensor([2.0, 0.6]).to(self.torch_device)))
+##                print("expert_action: ", expert_action)
+##                print("action: ", self.action)
+##            print("reward: ", r)
+#            return r
+
+            x = self.simulator.get_state()[..., 0]
+            y = self.simulator.get_state()[..., 1]
+            psi = self.simulator.get_state()[..., 2]
+
+            d = math.dist((x, y), (self.last_x, self.last_y)) if (
+                self.last_x is not None) and (self.last_y is not None) else 0
+            distance_reward = self.config.distance_bonus if d > self.config.distance_cutoff else 0
+            psi_reward = (1 - math.cos(psi - self.last_psi)) * \
+                (- self.config.heading_penalty) if (self.last_psi is not None) else 0
+            if self.check_reach_target():
+                reach_target_reward = self.config.waypoint_bonus
+                self.reached_waypoint_num += 1
+            else:
+                reach_target_reward = 0
+    #        r += reach_target_reward + distance_reward + psi_reward
+            realistic_reward = reach_target_reward + distance_reward + psi_reward
+
+#        r = torch.zeros_like(x)
+#        print("safety_reward")
+#        print(safety_reward)
+#        print("realistic_reward")
+#        print(realistic_reward)
+        r = safety_reward + realistic_reward
+        r = r.item()
+#        encounter_infractions = ((self.simulator.compute_offroad() > 0) or (
+#            self.simulator.compute_collision() > 0) or (self.simulator.compute_traffic_lights_violations() > 0)).item()
+#        if encounter_infractions:
+#            r = float('-inf')
+#        else:
+#            #            r = 0
+#            r /= 1000
+
 #            r = -1000.0
         return r
 
