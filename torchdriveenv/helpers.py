@@ -47,3 +47,13 @@ def set_seeds(seed, logger=None):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
     return seed
+
+
+def sample_waypoints_from_graph(waypoint_graph):
+    current_node = waypoint_graph[0]
+    waypoints = [list(current_node.point)]
+    while len(current_node.next_node_ids) > 0:
+        next_node_id = random.choices(current_node.next_node_ids, weights=current_node.next_edges, k=1)[0]
+        current_node = waypoint_graph[next_node_id]
+        waypoints.append(list(current_node.point))
+    return waypoints

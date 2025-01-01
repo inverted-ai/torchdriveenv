@@ -3,6 +3,7 @@ sys.path.insert(0, "..")
 # sys.path.insert(0, "../torchdrivesim")
 sys.path.insert(0, "../stable-baselines3")
 sys.path.insert(0, "../../energy-based-diffusion-model")
+sys.path.insert(0, "../../offline-critic")
 
 import time
 import torch
@@ -22,13 +23,15 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from wandb.integration.sb3 import WandbCallback
 
 import torchdriveenv
-from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data
+from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data
 from torchdriveenv.visualization import VisualizeEvaluationCallback
 
 from common import BaselineAlgorithm, load_rl_training_config
 
-training_data = load_default_train_data()
-validation_data = load_default_validation_data()
+# training_data = load_default_train_data()
+# validation_data = load_default_validation_data()
+training_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+validation_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
 
 class EvalNTimestepsCallback(BaseCallback):
     """

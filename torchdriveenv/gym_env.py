@@ -1,13 +1,11 @@
 import os
 import logging
 import math
-import inspect
 import json
 import random
 import numpy as np
-from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 import torch
 import gymnasium as gym
@@ -17,68 +15,49 @@ from torchdrivesim.behavior.iai import IAIWrapper, iai_drive
 from torchdrivesim.goals import WaypointGoal
 from torchdrivesim.kinematic import KinematicBicycle
 from torchdrivesim.rendering import renderer_from_config
-from torchdrivesim.rendering.base import RendererConfig
 from torchdrivesim.utils import Resolution
 from torchdrivesim.lanelet2 import find_lanelet_directions
 from torchdrivesim.map import find_map_config, traffic_controls_from_map_config
 from torchdrivesim.traffic_lights import current_light_state_tensor_from_controller
-from torchdrivesim.simulator import TorchDriveConfig, SimulatorInterface, \
-    BirdviewRecordingWrapper, Simulator, HomogeneousWrapper, CollisionMetric
+from torchdrivesim.simulator import SimulatorInterface, \
+    BirdviewRecordingWrapper, Simulator, HomogeneousWrapper
 
-from torchdriveenv.helpers import save_video, set_seeds
+from torchdriveenv.common import WaypointSuite
+from torchdriveenv.configs import RealisticMetric, EnvConfig
+from torchdriveenv.helpers import save_video, set_seeds, sample_waypoints_from_graph
 from torchdriveenv.iai import iai_conditional_initialize
 from torchdriveenv.diffusion_expert import DiffusionExpert
+from torchdriveenv.offline_critic import OfflineCritic
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-class RealisticMetric(Enum):
-    manual = 'manual'
-    expert_mse = 'expert_mse'
-    expert_diffusion_elbo = 'expert_diffusion_elbo'
+
+@dataclass
+class Node:
+    id: int
+    point: Tuple[float]
+    next_node_ids: List[int]
+    next_edges: List[float]
 
 
 @dataclass
-class EnvConfig:
-    ego_only: bool = False
-    max_environment_steps: int = 200
-    frame_stack: int = 3
-    waypoint_bonus: float = 100.
-    heading_penalty: float = 25.
-    distance_bonus: float = 1.
-    distance_cutoff: float = 0.5
-    use_background_traffic: bool = True
-    terminated_at_infraction: bool = True
-    infraction_penalty: float = 0
-#    use_expert_similarity: bool = False
-    realistic_metric: RealisticMetric = RealisticMetric.expert_diffusion_elbo
-    pretrained_diffusion_expert_path: Optional[str] = "pretrained_edm_module/model.ckpt"
-    seed: Optional[int] = None
-    simulator: TorchDriveConfig = TorchDriveConfig(renderer=RendererConfig(left_handed_coordinates=True,
-                                                                           highlight_ego_vehicle=True),
-                                                   collision_metric=CollisionMetric.nograd,
-                                                   left_handed_coordinates=True)
-    render_mode: Optional[str] = "rgb_array"
-    video_filename: Optional[str] = "rendered_video.mp4"
-    video_res: Optional[int] = 1024
-    video_fov: Optional[float] = 500
-    device: Optional[str] = None
+class StepData:
+    obs_birdview: List
+    ego_action: Tuple
+    ego_state: List
+    recurrent_states: List[List[float]]
+    reward: float
+    info: Dict
+    waypoint: Tuple
+#    q: float
 
 
 @dataclass
-class Scenario:
-    agent_states: List[List[float]] = None
-    agent_attributes: List[List[float]] = None
-    recurrent_states: List[List[float]] = None
-
-
-@dataclass
-class WaypointSuite:
-    locations: List[str] = None
-    waypoint_suite: List[List[List[float]]] = None
-    car_sequence_suite: List[Optional[Dict[int, List[List[float]]]]] = None
-    scenarios: List[Optional[Scenario]] = None
+class EpisodeData:
+    location: str
+    step_data: List[StepData]
 
 
 class GymEnv(gym.Env):
@@ -345,6 +324,7 @@ class WaypointSuiteEnv(GymEnv):
             f"carla_{location}") for location in data.locations]
 
         self.waypoint_suite = data.waypoint_suite
+        self.waypoint_graphs = data.waypoint_graphs
         self.car_sequence_suite = data.car_sequence_suite
         self.scenarios = data.scenarios
 #        if self.config.use_expert_similarity:
@@ -352,6 +332,8 @@ class WaypointSuiteEnv(GymEnv):
             self.expert_kinematic_model = KinematicBicycle(left_handed=True)
         elif self.config.realistic_metric == RealisticMetric.expert_diffusion_elbo:
             self.diffusion_expert = DiffusionExpert(self.config.pretrained_diffusion_expert_path)
+        if self.config.pretrained_offline_critic_path is not None:
+            self.offline_critic = OfflineCritic(self.config.pretrained_offline_critic_path)
         super().__init__(cfg=cfg, simulator=None)
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -359,6 +341,8 @@ class WaypointSuiteEnv(GymEnv):
             len(self.waypoint_suite))
         map_cfg = self.map_cfgs[self.current_waypoint_suite_idx]
         self.lanelet_map = map_cfg.lanelet_map
+        if (self.waypoint_graphs is not None) and (self.waypoint_graphs[self.current_waypoint_suite_idx] is not None):
+            self.waypoint_suite[self.current_waypoint_suite_idx] = sample_waypoints_from_graph(self.waypoint_graphs[self.current_waypoint_suite_idx])
 
         self.set_start_pos()
         self.current_target_idx = 1
@@ -479,7 +463,9 @@ class WaypointSuiteEnv(GymEnv):
             realistic_reward = torch.log(1 - torch.linalg.vector_norm(expert_action - self.action.squeeze()) / torch.linalg.vector_norm(torch.Tensor([2.0, 0.6]).to(self.torch_device)))
         elif self.config.realistic_metric == RealisticMetric.expert_diffusion_elbo:
             stacked_obs = np.concatenate(self.obs_list[-3:], axis=-3)
-            realistic_reward = self.diffusion_expert.expert_prob(action=self.action.squeeze(), observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze())
+            action = self.action.squeeze()
+            action[1] *= 10
+            realistic_reward = self.diffusion_expert.expert_prob(action=action, observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze())
         else:
 #            if encounter_infractions:
 #                r = float('-inf')
