@@ -271,8 +271,9 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
                 agent_states[..., 0], dtype=torch.bool)),
             renderer=renderer,
             traffic_controls=traffic_controls,
-            waypoint_goals=waypoint_goals
+            waypoint_goals=None
         )
+#            waypoint_goals=waypoint_goals
         simulator = HomogeneousWrapper(simulator)
         npc_mask = torch.ones(
             agent_states.shape[-2], dtype=torch.bool, device=agent_states.device)
@@ -465,7 +466,7 @@ class WaypointSuiteEnv(GymEnv):
             stacked_obs = np.concatenate(self.obs_list[-3:], axis=-3)
             action = self.action.squeeze()
             action[1] *= 10
-            realistic_reward = self.diffusion_expert.expert_prob(action=action, observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze())
+            realistic_reward = min(self.diffusion_expert.expert_prob(action=action, observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze()), 0)
         else:
 #            if encounter_infractions:
 #                r = float('-inf')
@@ -500,7 +501,7 @@ class WaypointSuiteEnv(GymEnv):
 #        print("realistic_reward")
 #        print(realistic_reward)
         r = safety_reward + realistic_reward
-        r = r.item()
+#        r = r.item()
 #        encounter_infractions = ((self.simulator.compute_offroad() > 0) or (
 #            self.simulator.compute_collision() > 0) or (self.simulator.compute_traffic_lights_violations() > 0)).item()
 #        if encounter_infractions:

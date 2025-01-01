@@ -24,7 +24,7 @@ class EnvConfig:
     distance_cutoff: float = 0.5
     use_background_traffic: bool = True
     terminated_at_infraction: bool = True
-    infraction_penalty: float = 1e8
+    infraction_penalty: float = float('inf')
 #    use_expert_similarity: bool = False
     realistic_metric: RealisticMetric = RealisticMetric.expert_diffusion_elbo
     pretrained_diffusion_expert_path: Optional[str] = "pretrained_edm_module/model.ckpt"
