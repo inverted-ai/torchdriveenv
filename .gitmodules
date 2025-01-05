@@ -1,3 +1,9 @@
 [submodule "stable-baselines3"]
 	path = stable-baselines3
 	url = git@github.com:zhangk1551/stable-baselines3.git
+[submodule "energy-based-diffusion-model"]
+	path = energy-based-diffusion-model
+	url = git@github.com:zhangk1551/energy-based-diffusion-model.git
+[submodule "offline-critic"]
+	path = offline-critic
+	url = git@github.com:zhangk1551/offline-critic.git

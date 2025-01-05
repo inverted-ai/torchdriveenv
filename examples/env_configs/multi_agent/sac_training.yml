@@ -2,7 +2,7 @@ algorithm: sac
 project: "critic-experiments"
 total_timesteps: 1e6
 parallel_env_num: 10
-record_training_examples: true
+record_training_examples: False
 
 wandb_callback:
   verbose: true
@@ -18,7 +18,7 @@ env:
   distance_cutoff: 0.25
 
 eval_val_callback:
-  n_steps: 1000
+  n_steps: 50000
   eval_n_episodes: 1
   deterministic: true
   record: true

@@ -13,7 +13,7 @@ from invertedai.common import AgentState, Point, AgentAttributes, RecurrentState
 
 from torchdrivesim.behavior.iai import IAIWrapper, iai_drive
 from torchdrivesim.goals import WaypointGoal
-from torchdrivesim.kinematic import KinematicBicycle
+from torchdrivesim.kinematic import BicycleNoReversing, KinematicBicycle
 from torchdrivesim.rendering import renderer_from_config
 from torchdrivesim.utils import Resolution
 from torchdrivesim.lanelet2 import find_lanelet_directions
@@ -242,14 +242,14 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
                         remain_recurrent_states.append(
                             background_traffic["recurrent_states"][i])
                 agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=map_cfg.iai_location_name,
-                                                                                              agent_count=max(95 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
+                                                                                              agent_count=max(80 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
                                                                                               center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
         agent_attributes, agent_states = agent_attributes.unsqueeze(
             0), agent_states.unsqueeze(0)
         agent_attributes, agent_states = agent_attributes.to(torch.float32), agent_states.to(
             torch.float32)
-        kinematic_model = KinematicBicycle()
+        kinematic_model = BicycleNoReversing()
         kinematic_model.set_params(lr=agent_attributes[..., 2])
         kinematic_model.set_state(agent_states)
         renderer = renderer_from_config(
@@ -371,7 +371,7 @@ class WaypointSuiteEnv(GymEnv):
                                          waypointseq=self.waypoint_suite[self.current_waypoint_suite_idx],
                                          device=self.torch_device)
         self.last_obs = self.get_obs()
-        self.obs_list = [np.zeros((1, 1, 3, 64, 64)), np.zeros((1, 1, 3, 64, 64)), self.last_obs]
+        self.obs_list = [self.last_obs, self.last_obs, self.last_obs]
         return self.last_obs, {}
 
     def set_start_pos(self):
@@ -466,7 +466,9 @@ class WaypointSuiteEnv(GymEnv):
             stacked_obs = np.concatenate(self.obs_list[-3:], axis=-3)
             action = self.action.squeeze()
             action[1] *= 10
-            realistic_reward = min(self.diffusion_expert.expert_prob(action=action, observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze()), 0)
+#            realistic_reward = min(self.diffusion_expert.expert_prob(action=action, observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze()), 0)
+#            realistic_reward = self.diffusion_expert.expert_logp_from_energy(action=action, observation=torch.Tensor(stacked_obs).to(self.torch_device).squeeze())
+            realistic_reward = 0
         else:
 #            if encounter_infractions:
 #                r = float('-inf')

@@ -27,7 +27,7 @@ def iai_conditional_initialize(location, agent_count, agent_attributes=None, age
             outside_recurrent_states.append(recurrent_states[i])
 
     agent_count -= len(conditional_agent_states)
-    agent_count = 0
+#    agent_count = 0
     if agent_count > 0:
         try:
             seed = random.randint(1, 10000)

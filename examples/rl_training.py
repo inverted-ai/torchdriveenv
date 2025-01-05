@@ -24,7 +24,7 @@ from wandb.integration.sb3 import WandbCallback
 
 import torchdriveenv
 from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data
-from torchdriveenv.visualization import VisualizeEvaluationCallback
+from torchdriveenv.visualization import VisualizeEvaluationCallback, EvalRolloutCallback
 
 from common import BaselineAlgorithm, load_rl_training_config
 
@@ -201,28 +201,31 @@ if __name__=='__main__':
                                                eval_n_episodes=rl_training_config.eval_val_callback['eval_n_episodes'],
                                                deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
 
-    if rl_training_config.eval_val_callback['record']:
-        eval_val_env = VecVideoRecorder(eval_val_env, "videos/"+experiment_name+'/validation',
-            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+#    if rl_training_config.eval_val_callback['record']:
+#        eval_val_env = VecVideoRecorder(eval_val_env, "videos/"+experiment_name+'/validation',
+#            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+#
+#    eval_train_env = SubprocVecEnv([make_env])
+#    eval_train_env = VecFrameStack(eval_train_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
+#    eval_train_callback = EvalNTimestepsCallback(eval_train_env, n_steps=rl_training_config.eval_train_callback['n_steps'],
+#                                                 eval_n_episodes=rl_training_config.eval_train_callback['eval_n_episodes'],
+#                                                 deterministic=rl_training_config.eval_train_callback['deterministic'], log_tab="eval_train")
 
-    eval_train_env = SubprocVecEnv([make_env])
-    eval_train_env = VecFrameStack(eval_train_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
-    eval_train_callback = EvalNTimestepsCallback(eval_train_env, n_steps=rl_training_config.eval_train_callback['n_steps'],
-                                                 eval_n_episodes=rl_training_config.eval_train_callback['eval_n_episodes'],
-                                                 deterministic=rl_training_config.eval_train_callback['deterministic'], log_tab="eval_train")
+#    visualization_callback = VisualizeEvaluationCallback(eval_data_dirs=[r"/home/kezhang/work/fall_2024/energy-based-diffusion-model/datasets/itra_single/stacked_obs_data"])
+    eval_rollout_env = SubprocVecEnv([make_env])
+    visualization_rollout_callback = EvalRolloutCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 
-    visualization_callback = VisualizeEvaluationCallback(eval_data_dirs=[r"/home/kezhang/work/fall_2024/energy-based-diffusion-model/datasets/itra_single/stacked_obs_data"])
-
-    if rl_training_config.eval_train_callback['record']:
-        eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',
-            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+#    if rl_training_config.eval_train_callback['record']:
+#        eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',
+#            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+#                      visualization_callback,
+#                      eval_train_callback,
 
     model.learn(
             total_timesteps=config["total_timesteps"],
             callback=[
                       eval_val_callback,
-                      eval_train_callback,
-                      visualization_callback,
+                      visualization_rollout_callback,
                       WandbCallback(
                         verbose=rl_training_config.wandb_callback['verbose'],
                         gradient_save_freq=rl_training_config.wandb_callback['gradient_save_freq'],
