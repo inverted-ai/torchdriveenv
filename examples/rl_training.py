@@ -15,7 +15,7 @@ import argparse
 import stable_baselines3
 print(stable_baselines3.__path__)
 
-from stable_baselines3 import SAC, PPO, A2C, TD3
+from stable_baselines3 import SAC, PPO, A2C, TD3, WABC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import VecVideoRecorder, VecFrameStack, SubprocVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
@@ -24,7 +24,7 @@ from wandb.integration.sb3 import WandbCallback
 
 import torchdriveenv
 from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data
-from torchdriveenv.visualization import VisualizeEvaluationCallback, EvalRolloutCallback
+from torchdriveenv.visualization import VisualizeEvaluationCallback, EvalRolloutCallback, EvalWABCCallback
 
 from common import BaselineAlgorithm, load_rl_training_config
 
@@ -142,23 +142,23 @@ def make_val_env_(env_config):
     return env
 
 if __name__=='__main__':
-    
+
     parser = argparse.ArgumentParser(
                     prog='tde_examples',
                     description='execute benchmarks for tde')
     parser.add_argument("--config_file", type=str, default="env_configs/single_agent/sac_training.yml")  
     args = parser.parse_args()
-    
+
     rl_training_config = load_rl_training_config(args.config_file)
     env_config = rl_training_config.env
 
     make_env = lambda: make_env_(env_config)
     make_val_env = lambda: make_val_env_(env_config)
-    
+
     config = {k:v for (k,v) in vars(rl_training_config).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))}
     config.update( {'env-'+k:v for (k,v) in vars(rl_training_config.env).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
     config.update( {'tds-'+k:v for (k,v) in vars(rl_training_config.env.simulator).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
-     
+
     experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
     wandb.init(
         name=experiment_name,
@@ -175,6 +175,10 @@ if __name__=='__main__':
     if rl_training_config.record_training_examples:
         env = VecVideoRecorder(env, "videos/"+experiment_name+'/online',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
+
+    if rl_training_config.algorithm == BaselineAlgorithm.wabc:
+        model = WABC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                     policy_kwargs={'optimizer_class':torch.optim.Adam})
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
         model = SAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
@@ -195,11 +199,11 @@ if __name__=='__main__':
                     policy_kwargs={'optimizer_class':torch.optim.Adam},
                     train_freq=1, gradient_steps=1)
 
-    eval_val_env = SubprocVecEnv([make_val_env])
-    eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
-    eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=rl_training_config.eval_val_callback['n_steps'],
-                                               eval_n_episodes=rl_training_config.eval_val_callback['eval_n_episodes'],
-                                               deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
+#    eval_val_env = SubprocVecEnv([make_val_env])
+#    eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
+#    eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=rl_training_config.eval_val_callback['n_steps'],
+#                                               eval_n_episodes=rl_training_config.eval_val_callback['eval_n_episodes'],
+#                                               deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
 
 #    if rl_training_config.eval_val_callback['record']:
 #        eval_val_env = VecVideoRecorder(eval_val_env, "videos/"+experiment_name+'/validation',
@@ -213,18 +217,18 @@ if __name__=='__main__':
 
 #    visualization_callback = VisualizeEvaluationCallback(eval_data_dirs=[r"/home/kezhang/work/fall_2024/energy-based-diffusion-model/datasets/itra_single/stacked_obs_data"])
     eval_rollout_env = SubprocVecEnv([make_env])
-    visualization_rollout_callback = EvalRolloutCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
+    visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 
 #    if rl_training_config.eval_train_callback['record']:
 #        eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',
 #            record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 #                      visualization_callback,
 #                      eval_train_callback,
+#                      eval_val_callback,
 
     model.learn(
             total_timesteps=config["total_timesteps"],
             callback=[
-                      eval_val_callback,
                       visualization_rollout_callback,
                       WandbCallback(
                         verbose=rl_training_config.wandb_callback['verbose'],

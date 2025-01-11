@@ -25,6 +25,7 @@ def save_video(imgs, filename, batch_index=0, fps=10, web_browser_friendly=False
         vid_out.write(frame)
 
     vid_out.release()
+    print("Video saved to ", filename)
 
     if web_browser_friendly:
         import uuid

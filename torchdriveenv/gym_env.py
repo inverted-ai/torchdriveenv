@@ -166,6 +166,8 @@ class GymEnv(gym.Env):
         if isinstance(self.simulator, BirdviewRecordingWrapper):
             bvs = self.simulator.get_birdviews()
             if len(bvs) > 1:
+                print("Saving video...")
+                print(self.config.video_filename)
                 save_video(bvs, self.config.video_filename)
 
 
@@ -242,7 +244,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
                         remain_recurrent_states.append(
                             background_traffic["recurrent_states"][i])
                 agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=map_cfg.iai_location_name,
-                                                                                              agent_count=max(80 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
+                                                                                              agent_count=max(65 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
                                                                                               center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
         agent_attributes, agent_states = agent_attributes.unsqueeze(
@@ -533,8 +535,8 @@ class WaypointSuiteEnv(GymEnv):
             offroad=self.simulator.compute_offroad(),
             collision=self.simulator.compute_collision(),
             traffic_light_violation=self.simulator.compute_traffic_lights_violations(),
-            is_success=(self.environment_steps >= self.max_environment_steps),
             reached_waypoint_num=reached_waypoint_num,
+            is_success=(self.environment_steps >= self.max_environment_steps),
             psi_smoothness=((self.last_psi - psi) / 0.1).norm(p=2).item(),
             psi_reward=(1 - math.cos(psi - self.last_psi)) *
             (- self.config.heading_penalty),
@@ -542,6 +544,7 @@ class WaypointSuiteEnv(GymEnv):
             speed_smoothness=((self.last_speed - speed) / 0.1).norm(p=2).item()
         )
         return self.info
+#            is_success=(self.current_target_idx >= 3),
 
 
 class SingleAgentWrapper(gym.Wrapper):

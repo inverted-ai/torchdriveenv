@@ -41,7 +41,7 @@ class DiffusionExpert:
 #            p *= 1024.0
 #            p = np.clip(p, 0, 1.0)
 
-            interpolated_p = torch.Tensor(zoom(p, 10, order=1)).to(observation.device)
+            interpolated_p = torch.Tensor(zoom(p, (10, 10), order=1)).to(observation.device)
 
             index_x = torch.round((action[1] * 3.0 - vmin_x) / (vmax_x - vmin_x) * 100).long()
             index_y = torch.round((action[0] - vmin_y) / (vmax_y - vmin_y) * 100).long()

@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from scipy.ndimage import zoom
 
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.utils import check_static
 
 from torchdriveenv.diffusion_expert import DiffusionExpert
 
@@ -89,7 +90,7 @@ def plot_critic(fn, obs, device):
     obs = obs.unsqueeze(0).expand((actions.shape[0], *obs.shape)).to(device)
 
     heatmap = fn(actions=actions, obs=obs).reshape(
-        (nticks, nticks)).detach().cpu().transpose(0, 1).numpy()
+        (nticks, nticks)).transpose(0, 1).detach().cpu().numpy()
 
     plt.imshow(heatmap, extent=[vmin_x, vmax_x, vmin_y, vmax_y], origin='lower', cmap='viridis')
 
@@ -98,6 +99,28 @@ def plot_critic(fn, obs, device):
 
     # Add labels and color bar
     plt.colorbar(label="critic")
+    plt.xlabel("steering")
+    plt.ylabel("acceleration")
+    return to_image(plt)
+
+
+def plot_heatmap(heatmap, name="critic"):
+    vmin_x = -1.0
+    vmin_y = -1.0
+    vmax_x = 1.0
+    vmax_y = 1.0
+
+    heatmap = torch.flip(heatmap.squeeze(), dims=[1]).detach().cpu().numpy()
+#    heatmap = heatmap.squeeze().detach().cpu().numpy()
+#    heatmap = torch.flip(heatmap.squeeze().transpose(0, 1), dims=[1]).detach().cpu().numpy()
+
+    plt.imshow(heatmap, extent=[vmin_x, vmax_x, vmin_y, vmax_y], origin='lower', cmap='viridis')
+
+    plt.axhline(0, color='black', linewidth=1)  # Horizontal axis
+    plt.axvline(0, color='black', linewidth=1)  # Vertical axis
+
+    # Add labels and color bar
+    plt.colorbar(label=name)
     plt.xlabel("steering")
     plt.ylabel("acceleration")
     return to_image(plt)
@@ -185,7 +208,7 @@ def plot_normalized_energy(fn, obs, device):
     p = np.exp(log_p - log_p_max)  # Subtract the max log probability and exponentiate
     p /= np.sum(p)
 
-    interpolated_p = zoom(p, 10, order=1)
+    interpolated_p = zoom(p, (10, 10), order=1)
 #
 #    heatmap = - fn(x=actions, t=t, s=obs).reshape(
 #        (nticks, nticks)).detach().cpu().transpose(0, 1).numpy()
@@ -303,4 +326,64 @@ class EvalRolloutCallback(BaseCallback):
             offline_normalized_energy_video = to_video(offline_normalized_energy_plots, video_name="offline_normalized_energy.mp4")
             videos.append(wandb.Video(offline_normalized_energy_video, caption="Offline Normalized Probability from Energy"))
 #            videos.append(wandb.Video(offline_elbo_video, caption="Offline ELBO"))
+            wandb.log({f"rollout from current policy": videos})
+
+
+class EvalWABCCallback(BaseCallback):
+    def __init__(self, eval_env, rollout_episode_num=1, verbose=0):
+        super(EvalWABCCallback, self).__init__(verbose)
+        self.eval_env = eval_env  # Evaluation environment
+        self.rollout_episode_num = rollout_episode_num
+        self.diffusion_expert = DiffusionExpert("pretrained_edm_module/model.ckpt")
+
+    def _on_step(self) -> bool:
+        # Perform a rollout every 1000 steps (as an example)
+        if self.n_calls % 100 == 0:
+            with torch.no_grad():
+                self.perform_rollout()
+        return True
+
+    def _get_device(self):
+        return next(self.model.b_net.parameters()).device
+
+    def perform_rollout(self):
+        """
+        Perform a rollout in the evaluation environment with the current policy.
+        """
+        device = self._get_device()
+
+        for episode in range(self.rollout_episode_num):
+            obs = self.eval_env.reset()
+            done = False
+            obs_list = [obs, obs, obs]
+            stacked_obs = np.concatenate(obs_list[-3:], axis=-3)
+            stacked_obs_tensor = torch.Tensor(stacked_obs).squeeze().to(device)
+            w_critic_plots = [plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor))]
+            b_critic_plots = [plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor))]
+            c_critic_plots = [plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor))]
+
+            while not done:
+                action, _ = self.model.predict(stacked_obs, deterministic=False)
+
+                obs, reward, done, info = self.eval_env.step(action)
+#                print("check_static")
+#                print(check_static(stacked_obs_tensor.unsqueeze(0)))
+#                print("action in perform_rollout")
+#                print(action)
+                obs_list.append(obs)
+                stacked_obs = np.concatenate(obs_list[-3:], axis=-3)
+                stacked_obs_tensor = torch.Tensor(stacked_obs).squeeze().to(device)
+                w_critic_plots.append(plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor)))
+                b_critic_plots.append(plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor)))
+                c_critic_plots.append(plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor)))
+
+            videos = []
+            obs_video = to_video([Image.fromarray(obs.squeeze().astype(np.uint8).transpose(1, 2, 0), 'RGB') for obs in obs_list], video_name="obs.mp4")
+            videos.append(wandb.Video(obs_video, caption="Observation"))
+            w_critic_video = to_video(w_critic_plots, video_name="w_critic.mp4")
+            videos.append(wandb.Video(w_critic_video, caption="W Critic"))
+            b_critic_video = to_video(b_critic_plots, video_name="b_critic.mp4")
+            videos.append(wandb.Video(b_critic_video, caption="B Critic"))
+            c_critic_video = to_video(c_critic_plots, video_name="c_critic.mp4")
+            videos.append(wandb.Video(c_critic_video, caption="C Critic"))
             wandb.log({f"rollout from current policy": videos})

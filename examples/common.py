@@ -12,6 +12,7 @@ class BaselineAlgorithm(Enum):
     ppo = 'ppo'
     a2c = 'a2c'
     td3 = 'td3'
+    wabc = 'wabc'
 
 @dataclass
 class RlCallbackConfig:
