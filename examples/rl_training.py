@@ -199,11 +199,11 @@ if __name__=='__main__':
                     policy_kwargs={'optimizer_class':torch.optim.Adam},
                     train_freq=1, gradient_steps=1)
 
-#    eval_val_env = SubprocVecEnv([make_val_env])
-#    eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
-#    eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=rl_training_config.eval_val_callback['n_steps'],
-#                                               eval_n_episodes=rl_training_config.eval_val_callback['eval_n_episodes'],
-#                                               deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
+    eval_val_env = SubprocVecEnv([make_val_env])
+    eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
+    eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=rl_training_config.eval_val_callback['n_steps'],
+                                               eval_n_episodes=rl_training_config.eval_val_callback['eval_n_episodes'],
+                                               deterministic=rl_training_config.eval_val_callback['deterministic'], log_tab="eval_val")
 
 #    if rl_training_config.eval_val_callback['record']:
 #        eval_val_env = VecVideoRecorder(eval_val_env, "videos/"+experiment_name+'/validation',
@@ -230,6 +230,7 @@ if __name__=='__main__':
             total_timesteps=config["total_timesteps"],
             callback=[
                       visualization_rollout_callback,
+                      eval_val_callback,
                       WandbCallback(
                         verbose=rl_training_config.wandb_callback['verbose'],
                         gradient_save_freq=rl_training_config.wandb_callback['gradient_save_freq'],

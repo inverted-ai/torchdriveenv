@@ -337,7 +337,6 @@ class EvalWABCCallback(BaseCallback):
         self.diffusion_expert = DiffusionExpert("pretrained_edm_module/model.ckpt")
 
     def _on_step(self) -> bool:
-        # Perform a rollout every 1000 steps (as an example)
         if self.n_calls % 100 == 0:
             with torch.no_grad():
                 self.perform_rollout()
@@ -358,6 +357,7 @@ class EvalWABCCallback(BaseCallback):
             obs_list = [obs, obs, obs]
             stacked_obs = np.concatenate(obs_list[-3:], axis=-3)
             stacked_obs_tensor = torch.Tensor(stacked_obs).squeeze().to(device)
+#            stacked_obs_tensor /= 255.0
             w_critic_plots = [plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor))]
             b_critic_plots = [plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor))]
             c_critic_plots = [plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor))]
@@ -378,7 +378,7 @@ class EvalWABCCallback(BaseCallback):
                 c_critic_plots.append(plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor)))
 
             videos = []
-            obs_video = to_video([Image.fromarray(obs.squeeze().astype(np.uint8).transpose(1, 2, 0), 'RGB') for obs in obs_list], video_name="obs.mp4")
+            obs_video = to_video([Image.fromarray(obs.squeeze().astype(np.uint8).transpose(1, 2, 0), 'RGB') for obs in obs_list[2:]], video_name="obs.mp4")
             videos.append(wandb.Video(obs_video, caption="Observation"))
             w_critic_video = to_video(w_critic_plots, video_name="w_critic.mp4")
             videos.append(wandb.Video(w_critic_video, caption="W Critic"))
