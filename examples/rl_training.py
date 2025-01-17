@@ -23,7 +23,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from wandb.integration.sb3 import WandbCallback
 
 import torchdriveenv
-from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data
+from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data, load_waypoint_suite_data
 from torchdriveenv.visualization import VisualizeEvaluationCallback, EvalRolloutCallback, EvalWABCCallback
 
 from common import BaselineAlgorithm, load_rl_training_config
@@ -32,6 +32,9 @@ from common import BaselineAlgorithm, load_rl_training_config
 # validation_data = load_default_validation_data()
 training_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
 validation_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+
+# training_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/parked_car.yml")
+# validation_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/parked_car.yml")
 
 class EvalNTimestepsCallback(BaseCallback):
     """
@@ -179,10 +182,14 @@ if __name__=='__main__':
     if rl_training_config.algorithm == BaselineAlgorithm.wabc:
         model = WABC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                      policy_kwargs={'optimizer_class':torch.optim.Adam})
+        eval_rollout_env = SubprocVecEnv([make_env])
+        visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
         model = SAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
                     policy_kwargs={'optimizer_class':torch.optim.Adam})
+        eval_rollout_env = SubprocVecEnv([make_env])
+        visualization_rollout_callback = EvalRolloutCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 
     if rl_training_config.algorithm == BaselineAlgorithm.ppo:
         model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
@@ -216,8 +223,9 @@ if __name__=='__main__':
 #                                                 deterministic=rl_training_config.eval_train_callback['deterministic'], log_tab="eval_train")
 
 #    visualization_callback = VisualizeEvaluationCallback(eval_data_dirs=[r"/home/kezhang/work/fall_2024/energy-based-diffusion-model/datasets/itra_single/stacked_obs_data"])
-    eval_rollout_env = SubprocVecEnv([make_env])
-    visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
+#    eval_rollout_env = SubprocVecEnv([make_env])
+#    visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
+#    visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 
 #    if rl_training_config.eval_train_callback['record']:
 #        eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',

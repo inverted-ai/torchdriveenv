@@ -7,7 +7,7 @@ import torch
 import wandb
 import numpy as np
 
-from PIL import Image
+from PIL import Image, ImageOps
 from matplotlib import pyplot as plt
 from scipy.ndimage import zoom
 
@@ -67,6 +67,57 @@ def to_gif(pil_images, gif_name=None, duration=100):
                        duration=duration,
                        loop=0)
     return save_to
+
+
+def pad_image_to_size(image, target_width, target_height):
+    # Calculate padding values
+    delta_width = target_width - image.width
+    delta_height = target_height - image.height
+    padding = (delta_width // 2, delta_height // 2, delta_width - delta_width // 2, delta_height - delta_height // 2)
+    # Add padding with white color
+    return ImageOps.expand(image, padding, fill=(255, 255, 255))
+
+
+def resize_and_pad_image(image, target_width, target_height, zoom_ratio=0.8):
+    # Calculate the target dimensions for resizing
+    if image.width < target_width * zoom_ratio:
+        zoom_width = int(target_width * zoom_ratio)
+        zoom_height = int(target_height * zoom_ratio)
+        # Resize image while maintaining aspect ratio
+        image.thumbnail((zoom_width, zoom_height), Image.Resampling.LANCZOS)
+
+    # Calculate padding values to fit the target dimensions
+    delta_width = target_width - image.width
+    delta_height = target_height - image.height
+    padding = (delta_width // 2, delta_height // 2, delta_width - delta_width // 2, delta_height - delta_height // 2)
+
+    # Add padding with white color
+    return ImageOps.expand(image, padding, fill=(255, 255, 255))
+
+
+def concat_images_2x2(images):
+    # Find the largest width and height among all images
+    max_width = max(img.width for img in images)
+    max_height = max(img.height for img in images)
+#    print("max_width", max_width)
+#    print("max_height", max_height)
+
+    # Pad each image to the largest width and height
+#    padded_images = [pad_image_to_size(img, max_width, max_height) for img in images]
+    padded_images = [resize_and_pad_image(img, max_width, max_height) for img in images]
+
+    # Create a blank canvas for the 2x2 grid
+    grid_width = max_width * 2
+    grid_height = max_height * 2
+    grid_image = Image.new("RGB", (grid_width, grid_height), (255, 255, 255))
+
+    # Paste images into the 2x2 grid
+    grid_image.paste(padded_images[0], (0, 0))
+    grid_image.paste(padded_images[1], (max_width, 0))
+    grid_image.paste(padded_images[2], (0, max_height))
+    grid_image.paste(padded_images[3], (max_width, max_height))
+
+    return grid_image
 
 
 def plot_critic(fn, obs, device):
@@ -358,9 +409,9 @@ class EvalWABCCallback(BaseCallback):
             stacked_obs = np.concatenate(obs_list[-3:], axis=-3)
             stacked_obs_tensor = torch.Tensor(stacked_obs).squeeze().to(device)
 #            stacked_obs_tensor /= 255.0
-            w_critic_plots = [plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor))]
-            b_critic_plots = [plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor))]
-            c_critic_plots = [plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor))]
+            w_critic_plots = [plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor), name="w_critic")]
+            b_critic_plots = [plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor), name="b_critic")]
+            c_critic_plots = [plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor), name="c_critic")]
 
             while not done:
                 action, _ = self.model.predict(stacked_obs, deterministic=False)
@@ -373,17 +424,21 @@ class EvalWABCCallback(BaseCallback):
                 obs_list.append(obs)
                 stacked_obs = np.concatenate(obs_list[-3:], axis=-3)
                 stacked_obs_tensor = torch.Tensor(stacked_obs).squeeze().to(device)
-                w_critic_plots.append(plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor)))
-                b_critic_plots.append(plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor)))
-                c_critic_plots.append(plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor)))
+                w_critic_plots.append(plot_heatmap(self.model.policy.get_w_grid(stacked_obs_tensor), name="w_critic"))
+                b_critic_plots.append(plot_heatmap(self.model.policy.get_b_grid(stacked_obs_tensor), name="b_critic"))
+                c_critic_plots.append(plot_heatmap(self.model.policy.get_c_grid(stacked_obs_tensor), name="c_critic"))
 
             videos = []
-            obs_video = to_video([Image.fromarray(obs.squeeze().astype(np.uint8).transpose(1, 2, 0), 'RGB') for obs in obs_list[2:]], video_name="obs.mp4")
-            videos.append(wandb.Video(obs_video, caption="Observation"))
-            w_critic_video = to_video(w_critic_plots, video_name="w_critic.mp4")
-            videos.append(wandb.Video(w_critic_video, caption="W Critic"))
-            b_critic_video = to_video(b_critic_plots, video_name="b_critic.mp4")
-            videos.append(wandb.Video(b_critic_video, caption="B Critic"))
-            c_critic_video = to_video(c_critic_plots, video_name="c_critic.mp4")
-            videos.append(wandb.Video(c_critic_video, caption="C Critic"))
+            obs_images = [Image.fromarray(obs.squeeze().astype(np.uint8).transpose(1, 2, 0), 'RGB') for obs in obs_list[2:]]
+            concat_images = [concat_images_2x2([obs_images[i], w_critic_plots[i], b_critic_plots[i], c_critic_plots[i]]) for i in range(len(obs_images))]
+
+#            obs_video = to_video([Image.fromarray(obs.squeeze().astype(np.uint8).transpose(1, 2, 0), 'RGB') for obs in obs_list[2:]], video_name="obs.mp4")
+#            videos.append(wandb.Video(obs_video, caption="Observation"))
+#            w_critic_video = to_video(w_critic_plots, video_name="w_critic.mp4")
+#            videos.append(wandb.Video(w_critic_video, caption="W Critic"))
+#            b_critic_video = to_video(b_critic_plots, video_name="b_critic.mp4")
+#            videos.append(wandb.Video(b_critic_video, caption="B Critic"))
+#            c_critic_video = to_video(c_critic_plots, video_name="c_critic.mp4")
+#            videos.append(wandb.Video(c_critic_video, caption="C Critic"))
+            videos.append(wandb.Video(to_video(concat_images)))
             wandb.log({f"rollout from current policy": videos})
