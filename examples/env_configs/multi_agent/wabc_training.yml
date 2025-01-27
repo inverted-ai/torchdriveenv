@@ -18,7 +18,7 @@ env:
   distance_cutoff: 0.25
 
 eval_val_callback:
-  n_steps: 50000
+  n_steps: 1000
   eval_n_episodes: 1
   deterministic: true
   record: true

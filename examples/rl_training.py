@@ -15,7 +15,7 @@ import argparse
 import stable_baselines3
 print(stable_baselines3.__path__)
 
-from stable_baselines3 import SAC, PPO, A2C, TD3, WABC
+from stable_baselines3 import WSAC, SAC, PPO, A2C, TD3
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import VecVideoRecorder, VecFrameStack, SubprocVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
@@ -24,17 +24,23 @@ from wandb.integration.sb3 import WandbCallback
 
 import torchdriveenv
 from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data, load_waypoint_suite_data
-from torchdriveenv.visualization import VisualizeEvaluationCallback, EvalRolloutCallback, EvalWABCCallback
+from torchdriveenv.visualization import EvalRolloutCallback
 
 from common import BaselineAlgorithm, load_rl_training_config
 
 # training_data = load_default_train_data()
 # validation_data = load_default_validation_data()
-training_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
-validation_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+# training_data = load_default_validation_data()
+# validation_data = load_default_validation_data()
+# training_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+# validation_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
 
 # training_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/parked_car.yml")
 # validation_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/parked_car.yml")
+
+training_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/traffic_lights.yml")
+validation_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/traffic_lights.yml")
+
 
 class EvalNTimestepsCallback(BaseCallback):
     """
@@ -179,15 +185,23 @@ if __name__=='__main__':
         env = VecVideoRecorder(env, "videos/"+experiment_name+'/online',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
-    if rl_training_config.algorithm == BaselineAlgorithm.wabc:
-        model = WABC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                     policy_kwargs={'optimizer_class':torch.optim.Adam})
-        eval_rollout_env = SubprocVecEnv([make_env])
-        visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
+#    if rl_training_config.algorithm == BaselineAlgorithm.wabc:
+#        model = WABC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+#                     policy_kwargs={'optimizer_class':torch.optim.Adam})
+#        eval_rollout_env = SubprocVecEnv([make_env])
+#        visualization_rollout_callback = EvalWABCCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 
     if rl_training_config.algorithm == BaselineAlgorithm.sac:
         model = SAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam})
+                    policy_kwargs={'optimizer_class':torch.optim.Adam},
+                    replay_buffer_kwargs={'handle_timeout_termination':False})
+        eval_rollout_env = SubprocVecEnv([make_env])
+        visualization_rollout_callback = EvalRolloutCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
+
+    if rl_training_config.algorithm == BaselineAlgorithm.wsac:
+        model = WSAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                     policy_kwargs={'optimizer_class':torch.optim.Adam},
+                     replay_buffer_kwargs={'handle_timeout_termination':False})
         eval_rollout_env = SubprocVecEnv([make_env])
         visualization_rollout_callback = EvalRolloutCallback(eval_env=eval_rollout_env, rollout_episode_num=1)
 

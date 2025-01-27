@@ -273,8 +273,9 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
                 agent_states[..., 0], dtype=torch.bool)),
             renderer=renderer,
             traffic_controls=traffic_controls,
-            waypoint_goals=None
+            waypoint_goals=waypoint_goals
         )
+#            waypoint_goals=None
 #            waypoint_goals=waypoint_goals
         simulator = HomogeneousWrapper(simulator)
         npc_mask = torch.ones(
@@ -536,7 +537,7 @@ class WaypointSuiteEnv(GymEnv):
             collision=self.simulator.compute_collision(),
             traffic_light_violation=self.simulator.compute_traffic_lights_violations(),
             reached_waypoint_num=reached_waypoint_num,
-            is_success=(self.environment_steps >= self.max_environment_steps),
+            is_success=((self.environment_steps >= self.max_environment_steps) and (self.current_target_idx >= 3)),
             psi_smoothness=((self.last_psi - psi) / 0.1).norm(p=2).item(),
             psi_reward=(1 - math.cos(psi - self.last_psi)) *
             (- self.config.heading_penalty),

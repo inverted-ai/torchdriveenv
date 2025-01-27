@@ -1,18 +1,18 @@
 #!/bin/bash
-#SBATCH --cpus-per-task=16
-#SBATCH --mem-per-cpu=8G
+#SBATCH --account=rrg-fwood
 #SBATCH --gres=gpu:1
-#SBATCH --time=7-00:00:00
-#SBATCH --array=0-4
-#SBATCH --output="slurm_output/slurm-%A_%a.out"
+#SBATCH --mem-per-cpu=8G
+#SBATCH --cpus-per-task=16
+#SBATCH --time=0-02:00:00
 
-ln -sf $SBATCH_OUTPUT latest
+module load StdEnv/2020
+module load python/3.8.10
+module load boost/1.80.0
+
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate
-curl https://bootstrap.pypa.io/get-pip.py | python
-which python
-which pip
 
+python -m pip install --upgrade pip
 pip install torchdriveenv[baselines]
 
 export IAI_API_KEY=oOIwcHIF0v4g4t7awNvEk6QObz7eflCq9MCCQNLQ

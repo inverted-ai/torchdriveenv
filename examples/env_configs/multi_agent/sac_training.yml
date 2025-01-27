@@ -12,13 +12,15 @@ wandb_callback:
 env:
   ego_only: false
   frame_stack: 3
+  infraction_penalty: 1e6
   waypoint_bonus: 100.
   heading_penalty: 25.
   distance_bonus: 1.
   distance_cutoff: 0.25
+  realistic_metric: "manual"
 
 eval_val_callback:
-  n_steps: 50000
+  n_steps: 1000
   eval_n_episodes: 1
   deterministic: true
   record: true
