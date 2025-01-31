@@ -1,0 +1,7 @@
+program: rl_training.py
+method: grid
+parameters:
+  sweep.env.infraction_penalty:
+    values: [0, 100000.0, inf]
+  sweep.env.seed:
+    values: [0, 1, 2, 3, 4]

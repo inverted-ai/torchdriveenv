@@ -26,7 +26,16 @@ import torchdriveenv
 from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data, load_labeled_data, load_waypoint_suite_data
 from torchdriveenv.visualization import EvalRolloutCallback
 
-from common import BaselineAlgorithm, load_rl_training_config
+from common import BaselineAlgorithm, load_rl_training_config, merge_sweep_config
+
+
+parser = argparse.ArgumentParser(
+                prog='tde_examples',
+                description='execute benchmarks for tde')
+parser.add_argument("--config_file", type=str, default="env_configs/single_agent/sac_training.yml")
+parser.add_argument("--sweep_id", type=str, default=None)
+
+PROJECT = "critic_experiments"
 
 # training_data = load_default_train_data()
 # validation_data = load_default_validation_data()
@@ -150,16 +159,35 @@ def make_val_env_(env_config):
     env = Monitor(env, info_keywords=("offroad", "collision", "traffic_light_violation"))
     return env
 
-if __name__=='__main__':
-
-    parser = argparse.ArgumentParser(
-                    prog='tde_examples',
-                    description='execute benchmarks for tde')
-    parser.add_argument("--config_file", type=str, default="env_configs/single_agent/sac_training.yml")  
-    args = parser.parse_args()
+def cli_main():
+#    args = parser.parse_args()
 
     rl_training_config = load_rl_training_config(args.config_file)
     env_config = rl_training_config.env
+
+    experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
+    print("before wandb.init")
+    print(rl_training_config)
+
+    wandb.init(
+        name=experiment_name,
+        project=rl_training_config.project,
+        sync_tensorboard=True,
+        monitor_gym=True,
+        save_code=True,
+    )
+
+    if args.sweep_id is not None:
+        sweep_config = wandb.config
+        print("sweep_config")
+        print(sweep_config)
+        rl_training_config = merge_sweep_config(rl_training_config, sweep_config)
+
+
+    env_config = rl_training_config.env
+
+    print("after merge_sweep_config")
+    print(rl_training_config)
 
     make_env = lambda: make_env_(env_config)
     make_val_env = lambda: make_val_env_(env_config)
@@ -168,15 +196,24 @@ if __name__=='__main__':
     config.update( {'env-'+k:v for (k,v) in vars(rl_training_config.env).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
     config.update( {'tds-'+k:v for (k,v) in vars(rl_training_config.env.simulator).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
 
-    experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
-    wandb.init(
-        name=experiment_name,
-        project=rl_training_config.project,
-        config=config,
-        sync_tensorboard=True,
-        monitor_gym=True,
-        save_code=True,
-    )
+    wandb.config.update(config)
+
+    print("after update wandb.config")
+    print(wandb.config)
+
+#    experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
+#    wandb.init(
+#        name=experiment_name,
+#        project=rl_training_config.project,
+#        config=config,
+#        sync_tensorboard=True,
+#        monitor_gym=True,
+#        save_code=True,
+#    )
+#
+#    if args.sweep_id is not None:
+#        sweep_config = wandb.config
+#        config = merge_sweep_config(config, sweep_config)
 
     env = SubprocVecEnv([make_env] * rl_training_config.parallel_env_num)
     env = VecFrameStack(env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
@@ -260,3 +297,11 @@ if __name__=='__main__':
                         model_save_path=f"models/{experiment_name}",
                     )],
     )
+
+
+if __name__=='__main__':
+    args = parser.parse_args()
+    if args.sweep_id is not None:
+        wandb.agent(args.sweep_id, function=cli_main, project=PROJECT, count=1)
+    else:
+        cli_main()

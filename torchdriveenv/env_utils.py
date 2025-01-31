@@ -4,6 +4,9 @@ import pickle
 import random
 from omegaconf import OmegaConf
 
+from torchdrivesim.rendering.base import RendererConfig
+from torchdrivesim.simulator import TorchDriveConfig, CollisionMetric
+
 import torchdriveenv
 #from torchdriveenv.gym_env import EnvConfig, Scenario, WaypointSuite
 from torchdriveenv.configs import EnvConfig
@@ -12,6 +15,12 @@ from torchdriveenv.common import Scenario, WaypointSuite
 
 def construct_env_config(raw_config):
     env_config = EnvConfig(**raw_config)
+    if "simulator" in raw_config:
+        env_config.simulator = TorchDriveConfig(**raw_config["simulator"])
+        if "renderer" in raw_config["simulator"]:
+            env_config.simulator.renderer = RendererConfig(**raw_config["simulator"]["renderer"])
+        if "collision_metric" in raw_config["simulator"]:
+            env_config.simulator.collision_metric = CollisionMetric(raw_config["simulator"]["collision_metric"])
     return env_config
 
 

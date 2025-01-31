@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from enum import Enum
 from omegaconf import OmegaConf
 from typing import Optional
@@ -40,10 +40,29 @@ class RlTrainingConfig:
     eval_val_callback: RlCallbackConfig = RlCallbackConfig()
     wandb_callback: WandbCallbackConfig = WandbCallbackConfig()
 
-def load_rl_training_config(yaml_path):
-    config_from_yaml = OmegaConf.to_object(OmegaConf.load(yaml_path))
-    rl_training_config = RlTrainingConfig(**config_from_yaml)
+def create_rl_training_config(omega_config):
+    rl_training_config = RlTrainingConfig(**omega_config)
     rl_training_config.algorithm = BaselineAlgorithm(rl_training_config.algorithm)
     rl_training_config.env = construct_env_config(rl_training_config.env)
 
     return rl_training_config
+
+def load_rl_training_config(yaml_path):
+    config_from_yaml = OmegaConf.to_object(OmegaConf.load(yaml_path))
+    return create_rl_training_config(config_from_yaml)
+
+def update_config(config, keys, value):
+    if len(keys) == 1:
+        if value == "inf":
+            value = float('inf')
+        config[keys[0]] = value
+    else:
+        update_config(config[keys[0]], keys[1:], value)
+
+def merge_sweep_config(base_config, sweep_config):
+    base_config = asdict(base_config)
+    for parameter in dict(sweep_config).keys():
+        keys = parameter.split(".")
+        if keys[0] == "sweep":
+            update_config(base_config, keys[1:], sweep_config[parameter])
+    return create_rl_training_config(OmegaConf.create(base_config))
