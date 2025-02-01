@@ -41,14 +41,14 @@ PROJECT = "critic_experiments"
 # validation_data = load_default_validation_data()
 # training_data = load_default_validation_data()
 # validation_data = load_default_validation_data()
-# training_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
-# validation_data = load_labeled_data("/home/kezhang/work/fall_2024/energy-based-diffusion-model/labeled_data")
+training_data = load_labeled_data("../torchdriveenv/data/labeled_data")
+validation_data = load_labeled_data("../torchdriveenv/data/labeled_data")
 
 # training_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/parked_car.yml")
 # validation_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/parked_car.yml")
 
-training_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/traffic_lights.yml")
-validation_data = load_waypoint_suite_data("/home/kezhang/work/fall_2024/torchdriveenv/torchdriveenv/data/traffic_lights.yml")
+# training_data = load_waypoint_suite_data("../torchdriveenv/data/traffic_lights.yml")
+# validation_data = load_waypoint_suite_data("../torchdriveenv/data/traffic_lights.yml")
 
 
 class EvalNTimestepsCallback(BaseCallback):

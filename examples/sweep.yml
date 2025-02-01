@@ -1,7 +1,18 @@
 program: rl_training.py
+name: manual_reward_baselines
 method: grid
 parameters:
-  sweep.env.infraction_penalty:
-    values: [0, 100000.0, inf]
   sweep.env.seed:
     values: [0, 1, 2, 3, 4]
+  sweep.env.agent_density:
+    values: [0, 30, 60]
+  sweep.env.realistic_metric:
+    values: [manual]
+  sweep.env.waypoint_bonus:
+    values: [0, 10, 100]
+  sweep.env.heading_penalty:
+    values: [0, 25, 50]
+  sweep.env.distance_bonus:
+    values: [0, 1, 10]
+  sweep.env.infraction_penalty:
+    values: [0, 1e6, inf]

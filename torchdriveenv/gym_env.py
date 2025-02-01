@@ -244,7 +244,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
                         remain_recurrent_states.append(
                             background_traffic["recurrent_states"][i])
                 agent_attributes, agent_states, recurrent_states = iai_conditional_initialize(location=map_cfg.iai_location_name,
-                                                                                              agent_count=max(65 - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
+                                                                                              agent_count=max(cfg.agent_density - len(remain_agent_states), background_traffic["agent_density"]), agent_attributes=remain_agent_attributes, agent_states=remain_agent_states, recurrent_states=remain_recurrent_states,
                                                                                               center=tuple(ego_state[:2]), traffic_light_state_history=[initial_light_state_name])
 
         agent_attributes, agent_states = agent_attributes.unsqueeze(
@@ -273,7 +273,7 @@ def build_simulator(cfg: EnvConfig, map_cfg, device, ego_state, scenario=None, c
                 agent_states[..., 0], dtype=torch.bool)),
             renderer=renderer,
             traffic_controls=traffic_controls,
-            waypoint_goals=waypoint_goals
+            waypoint_goals=None
         )
 #            waypoint_goals=None
 #            waypoint_goals=waypoint_goals

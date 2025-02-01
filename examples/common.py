@@ -35,6 +35,7 @@ class RlTrainingConfig:
     project: str = "stable_baselines3"
     total_timesteps: int = 5e6
     record_training_examples: bool = True
+    visualization_freq: int = 100
     env: EnvConfig = EnvConfig()
     eval_train_callback: RlCallbackConfig = RlCallbackConfig()
     eval_val_callback: RlCallbackConfig = RlCallbackConfig()

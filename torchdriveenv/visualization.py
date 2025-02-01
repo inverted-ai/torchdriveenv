@@ -159,7 +159,7 @@ def plot_normal_dist(mean, stddev, name="current policy model"):
 
 
 class EvalRolloutCallback(BaseCallback):
-    def __init__(self, eval_env, rollout_episode_num=1, verbose=0):
+    def __init__(self, eval_env, rollout_episode_num=3, verbose=0):
         super(EvalRolloutCallback, self).__init__(verbose)
         self.eval_env = eval_env
         self.rollout_episode_num = rollout_episode_num
@@ -167,7 +167,10 @@ class EvalRolloutCallback(BaseCallback):
             "pretrained_edm_module/model.ckpt")
 
     def _on_step(self) -> bool:
-        if self.n_calls % 100 == 0:
+#        if self.n_calls % 100 == 0:
+
+        # visualize when the number of calls is a power of 2
+        if (self.n_calls > 100) and ((self.n_calls & (self.n_calls - 1)) == 0):
             with torch.no_grad():
                 self.perform_rollout()
         return True
