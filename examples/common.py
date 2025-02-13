@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from omegaconf import OmegaConf
 from typing import Optional
@@ -33,10 +33,10 @@ class RlTrainingConfig:
     project: str = "stable_baselines3" 
     total_timesteps: int = 5e6 
     record_training_examples: bool = True 
-    env: EnvConfig = EnvConfig()
-    eval_train_callback: RlCallbackConfig = RlCallbackConfig()
-    eval_val_callback: RlCallbackConfig = RlCallbackConfig()
-    wandb_callback: WandbCallbackConfig = WandbCallbackConfig()
+    env: EnvConfig = field(default_factory=lambda:EnvConfig())
+    eval_train_callback: RlCallbackConfig = field(default_factory=lambda:RlCallbackConfig())
+    eval_val_callback: RlCallbackConfig = field(default_factory=lambda:RlCallbackConfig())
+    wandb_callback: WandbCallbackConfig = field(default_factory=lambda:WandbCallbackConfig())
 
 def load_rl_training_config(yaml_path):
     config_from_yaml = OmegaConf.to_object(OmegaConf.load(yaml_path))
