@@ -5,7 +5,7 @@ import inspect
 import json
 import random
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 
 import torch
@@ -43,10 +43,10 @@ class EnvConfig:
     use_background_traffic: bool = True
     terminated_at_infraction: bool = True
     seed: Optional[int] = None
-    simulator: TorchDriveConfig = TorchDriveConfig(renderer=RendererConfig(left_handed_coordinates=True,
+    simulator: TorchDriveConfig = field(default_factory=lambda:TorchDriveConfig(renderer=RendererConfig(left_handed_coordinates=True,
                                                                            highlight_ego_vehicle=True),
                                                    collision_metric=CollisionMetric.nograd,
-                                                   left_handed_coordinates=True)
+                                                   left_handed_coordinates=True))
     render_mode: Optional[str] = "rgb_array"
     video_filename: Optional[str] = "rendered_video.mp4"
     video_res: Optional[int] = 1024
