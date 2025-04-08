@@ -1,0 +1,4 @@
+[submodule "driving-models"]
+	path = driving-models
+	url = git@github.com:inverted-ai/driving-models.git
+	branch = smart-itra-argo
