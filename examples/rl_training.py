@@ -4,14 +4,15 @@ import wandb
 import gymnasium as gym
 from typing import Any, Dict
 import argparse
-
+from pathlib import Path
 from stable_baselines3 import SAC, PPO, A2C, TD3
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import VecVideoRecorder, VecFrameStack, SubprocVecEnv
+from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from wandb.integration.sb3 import WandbCallback
-
+import numpy as np
 import torchdriveenv
 from torchdriveenv.env_utils import load_default_train_data, load_default_validation_data
 
@@ -133,9 +134,14 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(
                     prog='tde_examples',
                     description='execute benchmarks for tde')
-    parser.add_argument("--config_file", type=str, default="env_configs/single_agent/sac_training.yml")  
+    parser.add_argument("--config_file", type=str, default="env_configs/multi_agent/sac_training.yml")
+    parser.add_argument("--init_model_path", type=str, default=None,
+        help="Optional path to a pretrained Stable Baselines3 model (.zip) used to warm start training.")
     args = parser.parse_args()
-    
+
+    if args.init_model_path is not None and not Path(args.init_model_path).is_file():
+        raise FileNotFoundError(f"Could not find pretrained model at {args.init_model_path}")
+
     rl_training_config = load_rl_training_config(args.config_file)
     env_config = rl_training_config.env
 
@@ -145,8 +151,12 @@ if __name__=='__main__':
     config = {k:v for (k,v) in vars(rl_training_config).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))}
     config.update( {'env-'+k:v for (k,v) in vars(rl_training_config.env).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
     config.update( {'tds-'+k:v for (k,v) in vars(rl_training_config.env.simulator).items() if isinstance(v, (float, int, str, list, dict, tuple, bool))})
-     
-    experiment_name = f"{rl_training_config.algorithm}_{int(time.time())}"
+    config["init_model_path"] = args.init_model_path or ""
+    config["init_from_pretrained"] = bool(args.init_model_path)
+
+    algo_name = rl_training_config.algorithm.value  # sac / ppo / …
+    agent_scope = "single_agent" if rl_training_config.env.ego_only else "multi_agent"
+    experiment_name = f"{agent_scope}_{algo_name}_{int(time.time())}"
     wandb.init(
         name=experiment_name,
         project=rl_training_config.project,
@@ -163,25 +173,86 @@ if __name__=='__main__':
         env = VecVideoRecorder(env, "videos/"+experiment_name+'/online',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
 
-    if rl_training_config.algorithm == BaselineAlgorithm.sac:
-        model = SAC("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam})
+    model = None
+    load_kwargs = dict(env=env, device="auto",
+                       custom_objects={"tensorboard_log": f"runs/{experiment_name}", "verbose": 1})
 
-    if rl_training_config.algorithm == BaselineAlgorithm.ppo:
-        model = PPO("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam}, 
-                    batch_size=256, n_epochs=5, ent_coef=0.01)
+    if args.init_model_path:
+        if rl_training_config.algorithm == BaselineAlgorithm.sac:
+            model = SAC.load(args.init_model_path, **load_kwargs)
+        elif rl_training_config.algorithm == BaselineAlgorithm.ppo:
+            model = PPO.load(args.init_model_path, **load_kwargs)
+        elif rl_training_config.algorithm == BaselineAlgorithm.a2c:
+            model = A2C.load(args.init_model_path, **load_kwargs)
+        elif rl_training_config.algorithm == BaselineAlgorithm.td3:
+            model = TD3.load(args.init_model_path, **load_kwargs)
+            n_act = env.action_space.shape[0]
+            model.action_noise = NormalActionNoise(mean=np.zeros(n_act), sigma=np.array([0.2, 0.05]))
+        else:
+            raise ValueError(f"Unsupported algorithm {rl_training_config.algorithm}")
+        model.set_env(env)
+        model.tensorboard_log = f"runs/{experiment_name}"
+    else:
+        if rl_training_config.algorithm == BaselineAlgorithm.sac:
+            model = SAC(
+                "MultiInputPolicy",
+                env,
+                learning_rate=3e-4,
+                buffer_size=200_000,
+                batch_size=256,
+                learning_starts=20_000,
+                train_freq=(1, "step"),
+                gradient_steps=1,
+                gamma=0.99,
+                tau=0.005,
+                ent_coef="auto",
+                verbose=1,
+                tensorboard_log=f"runs/{experiment_name}",
+                policy_kwargs=dict(
+                    optimizer_class=torch.optim.Adam,
+                    net_arch=dict(pi=[512, 512], qf=[512, 512]),
+                ),
+            )
 
-    if rl_training_config.algorithm == BaselineAlgorithm.a2c:
-        model = A2C("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam}, 
-                    n_steps=int(256/rl_training_config.parallel_env_num), gae_lambda=0.95, ent_coef=0.01)
+        if rl_training_config.algorithm == BaselineAlgorithm.ppo:
+            model = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                        policy_kwargs=dict(
+                            optimizer_class=torch.optim.Adam,
+                            net_arch=[dict(pi=[512, 512], vf=[512, 512])],
+                        ),
+                        n_steps=1024,           # per env
+                        batch_size=512,n_epochs=10,learning_rate=3e-4,gamma=0.995,gae_lambda=0.95,clip_range=0.2,ent_coef=0.0,vf_coef=0.5)
 
-    if rl_training_config.algorithm == BaselineAlgorithm.td3:
-        model = TD3("CnnPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
-                    policy_kwargs={'optimizer_class':torch.optim.Adam}, 
-                    train_freq=1, gradient_steps=1)
- 
+        if rl_training_config.algorithm == BaselineAlgorithm.a2c:
+            model = A2C("MultiInputPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                        policy_kwargs=dict(
+                            optimizer_class=torch.optim.Adam,
+                            net_arch=[dict(pi=[512, 512], vf=[512, 512])],
+                        ),
+                        n_steps=128, gae_lambda=0.95, ent_coef=0.01,
+                        learning_rate=3e-4,
+                        gamma=0.99,
+                        vf_coef=0.5)
+
+        if rl_training_config.algorithm == BaselineAlgorithm.td3:
+            n_act = env.action_space.shape[0]
+            noise = NormalActionNoise(mean=np.zeros(n_act), sigma=np.array([0.2, 0.05]))
+            model = TD3("MultiInputPolicy", env, verbose=1, tensorboard_log=f"runs/{experiment_name}",
+                        policy_kwargs=dict(
+                            optimizer_class=torch.optim.Adam,
+                            net_arch=dict(pi=[512, 512], qf=[512, 512]),
+                        ),
+                        learning_rate=3e-4,
+                        buffer_size=1_000_000,
+                        batch_size=256,
+                        learning_starts=50_000,
+                        train_freq=(1, "step"),
+                        action_noise=noise,
+                        gamma=0.99,
+                        tau=0.005)
+            # model = TD3.load("path/to/model.zip")
+            # model.set_env(env)
+
     eval_val_env = SubprocVecEnv([make_val_env])
     eval_val_env = VecFrameStack(eval_val_env, n_stack=rl_training_config.env.frame_stack, channels_order="first")
     eval_val_callback = EvalNTimestepsCallback(eval_val_env, n_steps=rl_training_config.eval_val_callback['n_steps'], 
@@ -201,7 +272,6 @@ if __name__=='__main__':
     if rl_training_config.eval_train_callback['record']:
         eval_train_env = VecVideoRecorder(eval_train_env, "videos/"+experiment_name+'/training',
             record_video_trigger=lambda x: x % 1000 == 0, video_length=200)  # record videos
-
     model.learn(
             total_timesteps=config["total_timesteps"],
             callback=[
